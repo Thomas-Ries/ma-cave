@@ -1,0 +1,11 @@
+/* Charte délicate — variables globales & réglages d'ambiance (le gros du styling est Tailwind) */
+:root {
+  --bg: #FAF6F1;
+  --surface: #FFFFFF;
+  --ink: #2B2724;
+  --muted: #8A7F75;
+  --hairline: #EAE2D9;
+  --accent: #7A2E3E;
+  --gold: #A8842C;
+  --riesling: #D9C589;
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Ma Cave",
+  "short_name": "Ma Cave",
+  "description": "Cave à vin & spiritueux — stock, apogées, accords mets & vins, import, synchro Notion",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#FAF6F1",
+  "theme_color": "#FAF6F1",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

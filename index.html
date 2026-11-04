@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
+<meta name="theme-color" content="#FAF6F1" />
+<title>Ma Cave</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          cream: "#FAF6F1", white: "#FFFFFF", ink: "#2B2724",
+          accent: "#7A2E3E", "accent-soft": "#F3E4E7",
+          gold: "#A8842C", green: "#4A7856", muted: "#8A7F75",
+          riesling: "#D9C589", "riesling-ink": "#8A6D2F",
+          hairline: "#EAE3DA",
+        },
+        fontFamily: { serif: ["Georgia", "Times New Roman", "serif"] },
+        borderRadius: { lg: "0.75rem", xl2: "1.375rem" },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { touch-action: manipulation; }
+  input:not([type="range"]):not([type="file"]):not([type="checkbox"]):not([type="radio"]), select, textarea { font-size: 16px !important; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  input[type="range"] { accent-color: #7A2E3E; }
+  .rounded-xl2 { box-shadow: 0 1px 2px rgb(43 39 36 / 0.03), 0 6px 18px rgb(43 39 36 / 0.05); }
+  img { border-radius: 0.75rem; }
+  button, select, input, label { -webkit-tap-highlight-color: transparent; }
+  [data-id], [data-apo-open] { transition: transform .15s ease; }
+  [data-id]:active, [data-apo-open]:active { transform: scale(0.985); }
+  body.no-scroll { position: fixed; left: 0; right: 0; overflow: hidden; overscroll-behavior: none; }
+  .fixed.inset-0 > div { overscroll-behavior: contain; }
+  /* En-têtes de région collants (mode dense) */
+  .dense-region-head { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(6px); background: rgba(250, 246, 241, 0.92); }
+  /* Pavé du verrou : flash bordeaux au tap */
+  .lock-key { transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease; }
+  .lock-key:active, .lock-key.flash { border-color: #7A2E3E; transform: scale(.96); box-shadow: 0 0 0 3px rgba(217, 197, 137, .45); }
+  /* Toasts : montée + fondu à l'entrée, descente douce à la sortie */
+  .toast-enter-active { transition: opacity .28s ease, transform .28s cubic-bezier(.21,1.02,.73,1); }
+  .toast-leave-active { transition: opacity .22s ease, transform .22s ease-in; position: absolute; left: 0; right: 0; bottom: 0; text-align: center; }
+  .toast-move { transition: transform .28s ease; }
+  .toast-enter-from { opacity: 0; transform: translateY(14px) scale(.96); }
+  .toast-leave-to { opacity: 0; transform: translateY(8px) scale(.97); }
+  /* Splash : barre de chargement riesling (2,6 s pour la version longue) */
+  @keyframes splashbar { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
+  .splashbar { animation: splashbar 2.6s ease-in-out forwards; }
+  /* Splash fun : entrées en scène successives */
+  @keyframes splashPop { 0% { transform: scale(.4); opacity: 0; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes splashRise { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes splashRing { 0% { transform: scale(.9); opacity: .5; } 100% { transform: scale(1.9); opacity: 0; } }
+  @keyframes splashFloat { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: .85; } 100% { transform: translateY(-120px); opacity: 0; } }
+  .splash-pop { animation: splashPop .8s cubic-bezier(.34,1.56,.64,1) both; }
+  .splash-rise { animation: splashRise .7s ease-out both; }
+  .splash-rise-2 { animation: splashRise .7s ease-out .35s both; }
+  .splash-ring { animation: splashRing 1.6s ease-out .2s 2 both; }
+  .splash-bubble { animation: splashFloat 3.2s ease-in-out infinite; }
+  /* Loader de synchro (pastille discrète, n'occulte rien) */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sync-spin { animation: spin .9s linear infinite; }
+  /* Mode sombre « cave » : surcharges charte activées par la classe html.dark */
+  html.dark body { background: #16110D; color: #EDE6DC; color-scheme: dark; }
+  html.dark .bg-cream { background-color: #251D17 !important; }
+  html.dark .bg-white { background-color: #2C241D !important; }
+  html.dark .bg-white\/95 { background-color: rgba(44, 36, 29, .95) !important; }
+  html.dark .text-ink { color: #EFE9DF !important; }
+  html.dark .text-muted { color: #A79887 !important; }
+  html.dark .border-hairline { border-color: #3E332A !important; }
+  html.dark .bg-hairline { background-color: #3E332A !important; }
+  html.dark .dense-region-head { background: rgba(37, 29, 23, .92); }
+  html.dark .bg-accent-soft { background-color: #3B2027 !important; }
+  /* Accents éclaircis pour rester lisibles sur fond sombre (CTA doux, nav active, notation) */
+  html.dark .text-accent { color: #E8A9B8 !important; }
+  html.dark .text-gold { color: #C9A24E !important; }
+  html.dark .text-green { color: #86B394 !important; }
+  html.dark .text-red, html.dark .border-red { color: #E0796E; border-color: #E0796E !important; }
+  html.dark .border-accent\/25 { border-color: rgba(232, 169, 184, .35) !important; }
+  /* Éléments inversés (chips actifs, pastilles PIN) : deviennent clairs sur fond sombre */
+  html.dark .bg-ink { background-color: #EFE9DF !important; }
+  html.dark .bg-ink.text-white { color: #2B2724 !important; }
+  html.dark .border-ink { border-color: #EFE9DF !important; }
+  /* Badges or : fond doré lumineux + texte sombre (le blanc sur or est illisible) */
+  html.dark .bg-gold { background-color: #C9A24E !important; }
+  html.dark .bg-gold.text-white { color: #241C17 !important; }
+  /* Riesling-ink (or sombre) : éclairci en doré clair */
+  html.dark .text-riesling-ink { color: #E2C063 !important; }
+  /* Teintes riesling pleines (boutons Boire, chips ×N, cartes apogées) : adoucies pour ne pas devenir boueuses */
+  html.dark .bg-riesling\/40 { background-color: rgba(217, 197, 137, .18) !important; }
+  html.dark .bg-riesling\/30 { background-color: rgba(217, 197, 137, .14) !important; }
+  html.dark .bg-riesling\/25 { background-color: rgba(217, 197, 137, .12) !important; }
+  html.dark .bg-riesling\/20 { background-color: rgba(217, 197, 137, .10) !important; }
+  html.dark .bg-riesling\/15 { background-color: rgba(217, 197, 137, .08) !important; }
+  /* En-têtes de région collants (mode dense) et bandeau apogée : surfaces sombres */
+  html.dark .bg-cream\/95 { background-color: rgba(37, 29, 23, .95) !important; }
+  html.dark .bg-riesling\/\[\.16\] { background-color: rgba(217, 197, 137, .10) !important; }
+  html.dark input, html.dark select, html.dark textarea { color: #EFE9DF; }
+</style>
+</head>
+<body class="bg-cream text-ink antialiased">
+<div id="app"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
