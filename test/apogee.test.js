@@ -17,9 +17,17 @@ console.log("Moteur d'apogée — hiérarchie appellation > cépage×région > c
 let r = estimeApogee({ nom: "Riesling", cepage: "Riesling", region: "Alsace", categorie: "Blanc", millesime: 2019 });
 check("Riesling Alsace 2019", [r.debut, r.fin], [2022, 2029]);
 
-/* 2. Gewurztraminer VT 2012 : 2–7 + mention VT +4/+15 → 2018–2034 */
+/* 2. Gewurztraminer VT 2012 : 3–9 + mention VT +4/+15 → 2019–2036 */
 r = estimeApogee({ nom: "Gewurztraminer Vendanges Tardives", cepage: "Gewurztraminer", region: "Alsace", categorie: "Moelleux", millesime: 2012 });
-check("Gewurz VT 2012", [r.debut, r.fin], [2018, 2034]);
+check("Gewurz VT 2012", [r.debut, r.fin], [2019, 2036]);
+
+/* 2b. Gewurztraminer 2020 avec SPÉCIFICITÉ Vendanges tardives (champ dédié) → 2027–2044 */
+r = estimeApogee({ nom: "Gewurztraminer", cepage: "Gewurztraminer", specificite: "Vendanges tardives", region: "Alsace", categorie: "Blanc", millesime: 2020 });
+check("Gewurz VT 2020 (spécificité)", [r.debut, r.fin], [2027, 2044]);
+
+/* 2c. Vin de glace 2021 : riesling alsace 3–10 + glace +6/+20 → 2030–2051 */
+r = estimeApogee({ nom: "Riesling", cepage: "Riesling", specificite: "Vin de glace", region: "Alsace", categorie: "Moelleux", millesime: 2021 });
+check("Vin de glace 2021 (spécificité)", [r.debut, r.fin], [2030, 2051]);
 
 /* 3. Morgon 2021 : appellation 5–12 → 2026–2033 */
 r = estimeApogee({ nom: "Morgon Côte du Py", cepage: "Gamay", region: "Beaujolais", categorie: "Rouge", millesime: 2021 });
@@ -86,5 +94,5 @@ check("Crémant NM (sans millésime)", [r.debut, r.fin], [YEAR, YEAR + 2]);
 r = estimeApogee({ nom: "Springbank 10 ans", type: "Spiritueux", categorie: "Spiritueux", millesime: null });
 check("Springbank → null", r, null);
 
-console.log(`\n${pass}/17 réussis${fail ? `, ${fail} échoué(s)` : ""}`);
+console.log(`\n${pass}/19 réussis${fail ? `, ${fail} échoué(s)` : ""}`);
 process.exit(fail ? 1 : 0);

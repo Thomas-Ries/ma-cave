@@ -6,6 +6,7 @@ import { estimeApogee } from "../lib/apogee.js";
 import { platsPourBouteille } from "../lib/accords.js";
 import { partagerBouteille } from "../lib/partage.js";
 import { splitNom, cepageCourt, photoFromFile, accTxt } from "../util.js";
+import { CEPAGES, SPECIFICITES } from "../config.js";
 import Ic from "./Ic.vue";
 import { notePalier } from "../lib/noteEchelle.js";
 
@@ -32,7 +33,7 @@ function remplitEdit(nb) {
   e.value = {
     nom: nb.nom ?? "", categorie: nb.categorie ?? "Rouge", quantite: nb.quantite ?? 1,
     millesime: nb.millesime ?? null, prix: nb.prix ?? null,
-    appellation: nb.appellation ?? "", cepage: nb.cepage ?? "", region: nb.region ?? "",
+    appellation: nb.appellation ?? "", cepage: nb.cepage ?? "", specificite: nb.specificite ?? "", region: nb.region ?? "",
     pays: nb.pays ?? "", cave: nb.cave ?? "", cuvee: nb.cuvee ?? "",
     format: nb.format ?? "Bouteille (75 cl)",
     apoDebut: nb.apoDebut ?? null, apoFin: nb.apoFin ?? null, commentaire: nb.commentaire ?? "",
@@ -57,6 +58,13 @@ watch(b, (nb, ob) => {
   if (edit.value) remplitEdit(nb);
 }, { immediate: true });
 
+/* Select cépage édition : liste + Assemblage + Autre… (texte conservé si hors liste) */
+const CEPAGE_OPTS = ["", ...CEPAGES, "Assemblage", "__autre__"];
+const eCepageSel = computed({
+  get() { return e.value ? (CEPAGE_OPTS.includes(e.value.cepage) ? e.value.cepage : "__autre__") : ""; },
+  set(v) { if (e.value) e.value.cepage = v === "__autre__" ? "" : v; },
+});
+
 function startEdit() { remplitEdit(b.value); edit.value = true; }
 
 function saveEdit() {
@@ -70,6 +78,7 @@ function saveEdit() {
   bo.prix = num(e.value.prix);
   bo.appellation = (e.value.appellation || "").trim();
   bo.cepage = (e.value.cepage || "").trim();
+  bo.specificite = (e.value.specificite || "").trim();
   bo.region = (e.value.region || "").trim();
   bo.pays = (e.value.pays || "").trim();
   bo.cave = (e.value.cave || "").trim() || bo.cave;
@@ -204,7 +213,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
         </div>
 
         <dl class="mt-3 text-sm">
-          <div v-for="([k, v]) in [['Millésime', b.millesime ?? '—'], ['Cépage', b.cepage || '—'], ['Appellation', b.appellation || '—'], ['Région', [b.region, b.pays].filter(Boolean).join(', ') || '—'], ['Cave', b.cave || '—'], ['Format', b.format || 'Bouteille (75 cl)'], ['Prix', b.prix != null ? b.prix + ' €' : '—'], ['En stock', b.quantite + ' bouteille' + (b.quantite > 1 ? 's' : '')]]" :key="k" class="flex justify-between gap-2 py-1.5 border-b border-hairline last:border-0">
+          <div v-for="([k, v]) in [['Millésime', b.millesime ?? '—'], ['Cépage', [b.cepage || '—', b.specificite].filter(Boolean).join(' · ')], ['Appellation', b.appellation || '—'], ['Région', [b.region, b.pays].filter(Boolean).join(', ') || '—'], ['Cave', b.cave || '—'], ['Format', b.format || 'Bouteille (75 cl)'], ['Prix', b.prix != null ? b.prix + ' €' : '—'], ['En stock', b.quantite + ' bouteille' + (b.quantite > 1 ? 's' : '')]]" :key="k" class="flex justify-between gap-2 py-1.5 border-b border-hairline last:border-0">
             <dt class="text-muted">{{ k }}</dt><dd class="text-right">{{ v }}</dd>
           </div>
         </dl>
@@ -302,9 +311,24 @@ watch(acc, v => cave.overlay("fiche-acc", v));
           </div>
           <div class="flex gap-2 items-start">
             <div class="flex-1 min-w-0">
-              <input v-model="e.cepage" placeholder="Cépage" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+              <select v-model="eCepageSel" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
+                <option value="" disabled>Sélectionne…</option>
+                <option v-for="c in CEPAGES" :key="c">{{ c }}</option>
+                <option value="Assemblage">Assemblage</option>
+                <option value="__autre__">Autre…</option>
+              </select>
+              <input v-if="eCepageSel === '__autre__'" v-model="e.cepage" placeholder="Cépage (saisie libre)" class="w-full mt-2 bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
               <p class="text-[10px] text-muted mt-1 ml-1">Cépage</p>
             </div>
+            <div class="flex-1 min-w-0">
+              <select v-model="e.specificite" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
+                <option value="">—</option>
+                <option v-for="s in SPECIFICITES" :key="s">{{ s }}</option>
+              </select>
+              <p class="text-[10px] text-muted mt-1 ml-1">Spécificité (VT, SGN…)</p>
+            </div>
+          </div>
+          <div class="flex gap-2 items-start">
             <div class="flex-1 min-w-0">
               <input v-model="e.region" placeholder="Région" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
               <p class="text-[10px] text-muted mt-1 ml-1">Région</p>

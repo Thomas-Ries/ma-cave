@@ -5,7 +5,7 @@ import { useRouter } from "vue-router";
 import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
 import { exportLivreCave } from "../lib/livre.js";
-import { uid } from "../config.js";
+import { uid, CEPAGES, SPECIFICITES } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
 import Ic from "../components/Ic.vue";
@@ -135,7 +135,7 @@ watch(showListes, v => cave.overlay("listes", v));
 watch(importRows, v => cave.overlay("import", !!v));
 
 function blankAdd() {
-  return { nom: "", categorie: "Rouge", quantite: 1, millesime: null, prix: null, appellation: "", cepage: "", region: "", pays: "France", cave: "", cuvee: "", format: "Bouteille (75 cl)", statut: "En cave", commentaire: "", photo: null, apoDebut: null, apoFin: null };
+  return { nom: "", categorie: "Rouge", quantite: 1, millesime: null, prix: null, appellation: "", cepage: "", specificite: "", region: "", pays: "France", cave: "", cuvee: "", format: "Bouteille (75 cl)", statut: "En cave", commentaire: "", photo: null, apoDebut: null, apoFin: null };
 }
 const preFill = ref(false); /* pré-remplissage depuis une note d'achat : ne pas écraser n à l'ouverture */
 watch(showAdd, v => { if (v) { if (!preFill.value) { n.value = blankAdd(); addMore.value = false; addOk.value = false; newCave.value = false; caveSel.value = ""; } apoTouche.value = false; preFill.value = false; } });
@@ -169,9 +169,18 @@ const apoSugg = computed(() => {
   return estimeApogee({
     nom: n.value.nom, cuvee: n.value.cuvee, appellation: n.value.appellation,
     cepage: n.value.cepage, region: n.value.region, categorie: n.value.categorie,
+    specificite: n.value.specificite,
     type: n.value.categorie === "Spiritueux" ? "Spiritueux" : "Vin",
     millesime: isNaN(x) ? null : Math.round(x),
   });
+});
+
+/* Select cépage : liste courante + Assemblage + « Autre… » (saisie libre).
+   get : si la valeur (dictée, import) n'est pas dans la liste → mode Autre, texte conservé. */
+const CEPAGE_OPTS = ["", ...CEPAGES, "Assemblage", "__autre__"];
+const cepageSel = computed({
+  get() { return CEPAGE_OPTS.includes(n.value.cepage) ? n.value.cepage : "__autre__"; },
+  set(v) { n.value.cepage = v === "__autre__" ? "" : v; },
 });
 watch(apoSugg, s => { if (!apoTouche.value && s) { n.value.apoDebut = s.debut; n.value.apoFin = s.fin; } }, { immediate: true });
 
@@ -190,6 +199,7 @@ function saveAdd() {
     prix: num(n.value.prix),
     appellation: (n.value.appellation || "").trim(),
     cepage: (n.value.cepage || "").trim(),
+    specificite: (n.value.specificite || "").trim(),
     region: (n.value.region || "").trim(),
     pays: (n.value.pays || "").trim(),
     cave: (n.value.cave || "").trim(),
@@ -631,9 +641,24 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
               </div>
               <div class="flex gap-2 items-start">
                 <div class="flex-1 min-w-0">
-                  <input v-model="n.cepage" placeholder="Cépage" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+                  <select v-model="cepageSel" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
+                    <option value="" disabled>Sélectionne…</option>
+                    <option v-for="c in CEPAGES" :key="c">{{ c }}</option>
+                    <option value="Assemblage">Assemblage</option>
+                    <option value="__autre__">Autre…</option>
+                  </select>
+                  <input v-if="cepageSel === '__autre__'" v-model="n.cepage" placeholder="Cépage (saisie libre)" class="w-full mt-2 bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                   <p class="text-[10px] text-muted mt-1 ml-1">Cépage</p>
                 </div>
+                <div class="flex-1 min-w-0">
+                  <select v-model="n.specificite" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
+                    <option value="">—</option>
+                    <option v-for="s in SPECIFICITES" :key="s">{{ s }}</option>
+                  </select>
+                  <p class="text-[10px] text-muted mt-1 ml-1">Spécificité (VT, SGN…)</p>
+                </div>
+              </div>
+              <div class="flex gap-2 items-start">
                 <div class="flex-1 min-w-0">
                   <input v-model="n.region" placeholder="Région" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                   <p class="text-[10px] text-muted mt-1 ml-1">Région</p>

@@ -65,7 +65,7 @@ const PAR_APPELLATION = {
 
 /* ---------- 2. Cépage × région (vins génériques sans appellation précise) ---------- */
 const PAR_CEPAGE_REGION = {
-  "riesling|alsace": [3, 10], "gewurztraminer|alsace": [2, 7], "pinot gris|alsace": [2, 7],
+  "riesling|alsace": [3, 10], "gewurztraminer|alsace": [3, 9], "pinot gris|alsace": [2, 7],
   "sylvaner|alsace": [1, 4], "muscat|alsace": [2, 6],
   "chenin|vallee de la loire": [4, 12], "chenin|loire": [4, 12],
   "nebbiolo|piemont": [7, 20], "gamay|beaujolais": [2, 5],
@@ -114,8 +114,11 @@ const PAR_CATEGORIE = {
  * regions : liste de sous-chaînes (normalisées) où la règle s'applique ;
  * absente → partout. Le bonus s'ajoute à la fenêtre de base. */
 const MENTIONS = [
-  { mots: ["vendanges tardives", " vt", "late harvest"], bonus: [4, 15], hors: ["bordeaux"] },
   { mots: ["selection de grains nobles", " sgn", "grains nobles"], bonus: [8, 25] },
+  { mots: ["vendanges tardives", " vt", "late harvest"], bonus: [4, 15], hors: ["bordeaux"] },
+  { mots: ["vin de glace", "eiswein", "ice wine"], bonus: [6, 20] },
+  { mots: ["vin de paille"], bonus: [5, 15] },
+  { mots: ["liquoreux"], bonus: [3, 10] },
   { mots: ["moelleux de garde", "bonnezeaux", "quarts de chaume", "coteaux du layon", "vouvray moelleux"], bonus: [5, 15] },
   /* Alsace : les Grands Crus sont des vins de tension, 15-30 ans pour le Riesling */
   { mots: ["grand cru"], regions: ["alsace"], bonus: [4, 10] },
@@ -212,7 +215,7 @@ function bonusChampagne(texte) {
 function estimeApogee(b) {
   if (!b || b.type === "Spiritueux" || b.categorie === "Spiritueux") return null;
 
-  const texte = [b.nom, b.cuvee, b.appellation, b.region].join(" ");
+  const texte = [b.nom, b.cuvee, b.appellation, b.region, b.specificite].join(" ");
   const cat = b.categorie || "";
   const catNorm = norm(cat);
 

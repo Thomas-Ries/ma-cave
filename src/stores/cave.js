@@ -367,7 +367,7 @@ export const useCave = defineStore("cave", {
         if (b.quantite > 0) b.statut = "En cave";
         b.modifLe = new Date().toISOString();
       } else {
-        b = { id: uid(), nom: h.nom, type: h.type || "Vin", categorie: h.categorie || "Rouge", cepage: h.cepage || "", region: h.region || "", pays: h.pays || "", millesime: h.millesime ?? null, quantite: 1, prix: null, cave: h.cave || "Principale", cuvee: h.cuvee || "", format: h.format || "Bouteille (75 cl)", commentaire: "", statut: "En cave", bues: 0, note: null, photo: null, apoDebut: null, apoFin: null, apoAuto: null, apoRegle: null, buLe: null, modifLe: new Date().toISOString() };
+        b = { id: uid(), nom: h.nom, type: h.type || "Vin", categorie: h.categorie || "Rouge", cepage: h.cepage || "", region: h.region || "", pays: h.pays || "", millesime: h.millesime ?? null, quantite: 1, prix: null, cave: h.cave || "Principale", specificite: h.specificite || "", cuvee: h.cuvee || "", format: h.format || "Bouteille (75 cl)", commentaire: "", statut: "En cave", bues: 0, note: null, photo: null, apoDebut: null, apoFin: null, apoAuto: null, apoRegle: null, buLe: null, modifLe: new Date().toISOString() };
         const est = estimeApogee(b);
         if (est) { b.apoAuto = est; b.apoRegle = est.regle; }
         this.db.bouteilles.push(b);
@@ -577,7 +577,7 @@ export const useCave = defineStore("cave", {
         if (!nb || !nb.nom) continue;
         const local = this.db.bouteilles.find(b => importKey(b) === importKey(nb));
         if (!local) {
-          const b = { id: uid(), nom: nb.nom, type: nb.type || "Vin", categorie: nb.categorie || "Rouge", cepage: nb.cepage || "", region: nb.region || "", pays: nb.pays || "", millesime: nb.millesime ?? null, quantite: nb.quantite ?? 1, prix: nb.prix ?? null, cave: nb.cave || "Principale", cuvee: nb.cuvee || "", appellation: nb.appellation || "", format: nb.format || "Bouteille (75 cl)", commentaire: nb.commentaire || "", statut: nb.statut || "En cave", bues: 0, note: null, photo: null, apoDebut: null, apoFin: null, apoAuto: null, apoRegle: null, buLe: null, modifLe: nb.lastEdited || new Date().toISOString() };
+          const b = { id: uid(), nom: nb.nom, type: nb.type || "Vin", categorie: nb.categorie || "Rouge", cepage: nb.cepage || "", region: nb.region || "", pays: nb.pays || "", millesime: nb.millesime ?? null, quantite: nb.quantite ?? 1, prix: nb.prix ?? null, cave: nb.cave || "Principale", cuvee: nb.cuvee || "", appellation: nb.appellation || "", specificite: nb.specificite || "", format: nb.format || "Bouteille (75 cl)", commentaire: nb.commentaire || "", statut: nb.statut || "En cave", bues: 0, note: null, photo: null, apoDebut: null, apoFin: null, apoAuto: null, apoRegle: null, buLe: null, modifLe: nb.lastEdited || new Date().toISOString() };
           const est = estimeApogee(b);
           if (est) { b.apoAuto = est; b.apoRegle = est.regle; }
           this.db.bouteilles.push(b);
