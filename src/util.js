@@ -21,19 +21,17 @@ export function photoFromFile(file, cb, MAX = 900, QUALITE = 0.72) {
 /* Sépare domaine et cuvée depuis le nom complet */
 export function splitNom(b) {
   const nom = String(b.nom || "").trim();
-  const pre = nom.match(/^(Domaines?|Châteaux?|Chateaux?|Clos|Mas|Maison|Vignobles|Caves?|Coopérative|Société)\s+/u);
-  if (!pre) return { domaine: nom, cuvee: b.cuvee || "" };
-  const toks = nom.slice(pre[0].length).split(/\s+/);
-  let i = 0, domaine = pre[0].trim();
-  while (i < toks.length) {
-    const t = toks[i];
-    const isConn = /^[a-zàâäéèêëîïôöùûüç]/.test(t);
-    domaine += " " + t;
-    i++;
-    if (!isConn) break;
+  const cu = String(b.cuvee || "").trim();
+  if (!cu) return { domaine: nom, cuvee: "" };
+  /* Cuvée explicite : on la détache de la fin du nom si elle y figure.
+     L'ancien découpage heuristique (coupe au premier mot en majuscule après
+     « Domaine ») transformait « Domaine David Beaupère » en « Domaine David »
+     + cuvée fantôme « Beaupère » : sans champ cuvée, on affiche le nom complet. */
+  if (nom.toLowerCase().endsWith(cu.toLowerCase())) {
+    const d = nom.slice(0, nom.length - cu.length).replace(/[\s\u2013\u2014-]+$/, "").trim();
+    if (d) return { domaine: d, cuvee: cu };
   }
-  const cuvee = b.cuvee || toks.slice(i).join(" ").trim();
-  return { domaine, cuvee: cuvee || "" };
+  return { domaine: nom, cuvee: cu };
 }
 
 /* Région affichée : si France on n'affiche pas le pays, hors France on l'ajoute */
