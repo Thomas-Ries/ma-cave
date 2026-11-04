@@ -8,7 +8,6 @@ import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
-import { ouvrirCamera, lireAvecDetecteur, lireAvecZxing, barcodeDetectorDispo, chercheProduit, normaliseCode } from "../lib/scan.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -235,60 +234,7 @@ function appliquePatch(patch) {
   if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs remplis */
 }
 
-/* ---------- Scan code-barres (surtout spiritueux) → pré-remplissage ---------- */
-const scanOn = ref(false);
-const scanMsg = ref("");
-const scanVideo = ref(null);
-let scanStream = null, scanStop = null;
-async function demarrerScan() {
-  scanMsg.value = "Ouverture de la caméra…";
-  scanOn.value = true;
-  await nextTick();
-  try {
-    if (barcodeDetectorDispo()) {
-      /* chemin natif : on ouvre le flux nous-mêmes (garde-fou 9 s) */
-      scanStream = await ouvrirCamera(scanVideo.value);
-      scanStop = () => { try { scanStream?.getTracks().forEach(t => t.stop()); } catch {} };
-    } else {
-      /* chemin zxing : c'est LUI qui ouvre la caméra (deux flux = iOS figé) */
-      scanStop = () => {};
-    }
-    scanMsg.value = "Vise le code-barres de la bouteille";
-    const brut = barcodeDetectorDispo()
-      ? await lireAvecDetecteur(scanVideo.value)
-      : await lireAvecZxing(scanVideo.value, stop => { scanStop = stop; });
-    finScan();
-    const code = normaliseCode(brut);
-    if (!code) { cave.toast("Code lu illisible (" + String(brut).slice(0, 20) + ") — réessaie en tenant l'étiquette bien à plat"); return; }
-    try {
-      const patch = await chercheProduit(code);
-      if (patch) {
-        appliquePatch(patch);
-        cave.toast("Champs pré-remplis depuis le code-barres — complète ou dicte le reste");
-      } else {
-        appliquePatch({ commentaire: "Code-barres " + code }); /* on garde la trace du code scanné */
-        cave.toast("Code " + code + " lu, mais produit absent des bases libres — code noté dans la fiche, complète le reste");
-      }
-    } catch {
-      cave.toast("Produit introuvable (hors ligne ?) — remplis à la main ou dicte");
-    }
-  } catch (e) {
-    finScan();
-    if (e?.name === "NotAllowedError") cave.toast("Accès caméra refusé — autorise Ma Cave dans les Réglages de l'appareil");
-    else if (e?.message === "delai") cave.toast("Caméra lente à répondre — réessaie, ou vérifie l'autorisation");
-    else if (e?.message === "inaccessible") cave.toast("Caméra inaccessible — cet appareil ou navigateur ne la propose pas");
-    else cave.toast("Caméra indisponible — remplis la fiche à la main ou dicte");
-  }
-}
-function finScan() {
-  scanOn.value = false;
-  scanMsg.value = "";
-  try { scanStop?.(); } catch {}
-  scanStop = null;
-  try { scanStream?.getTracks().forEach(t => t.stop()); } catch {}
-  scanStream = null;
-}
-watch(scanOn, v => cave.overlay("scan", v));
+
 
 function toggleDictee() {
   if (dicteeOn.value) { stopDictee(); return; }
@@ -596,23 +542,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <ProfilSheet :open="showProfil" :on-avatar="onAvatar" @close="showProfil = false" />
     <ImportPreview v-if="importRows" :rows="importRows" @close="importRows = null" />
 
-    <!-- Scan code-barres : caméra plein écran, cadre large adapté aux codes -->
-    <div v-if="scanOn" class="fixed inset-0 z-[70] bg-black flex flex-col items-center justify-between px-6 py-6">
-      <div class="w-full max-w-md flex items-center justify-between">
-        <p class="font-serif text-lg text-white">Scanner la bouteille</p>
-        <button @click="finScan" class="p-2 -mr-2 rounded-full bg-white/10 text-white" title="Fermer le scanner"><Ic name="x" cls="w-5 h-5" /></button>
-      </div>
-      <div class="relative w-full max-w-md flex-1 min-h-0 rounded-xl2 overflow-hidden bg-black">
-        <video ref="scanVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
-        <!-- cadre guide : rectangle large et haut, taillé pour un code-barres -->
-        <div class="absolute inset-x-5 top-1/2 -translate-y-1/2 h-32 border-2 border-white/90 rounded-xl pointer-events-none"></div>
-      </div>
-      <div class="w-full max-w-md">
-        <p class="text-xs text-white/80 text-center mt-4">{{ scanMsg || "Le code doit tenir dans le cadre — rapproche-toi si c'est flou" }}</p>
-        <button @click="finScan" class="mt-4 w-full py-2.5 rounded-full bg-white text-ink text-sm">Annuler</button>
-      </div>
-    </div>
-
+    
     <!-- Modale d'ajout -->
     <div v-if="showAdd" class="fixed inset-0 z-30 bg-ink/40 flex items-end md:items-center justify-center p-0 md:p-4" @click.self="showAdd = false">
       <div class="bg-white rounded-t-xl2 md:rounded-xl2 w-full max-w-md max-h-[92vh] overflow-y-auto">
@@ -635,10 +565,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
             <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
-            <button type="button" @click="demarrerScan" class="shrink-0 h-9 px-3.5 rounded-full bg-white border border-accent/40 text-accent flex items-center gap-1.5 text-xs" title="Scanner le code-barres de la bouteille (spiritueux surtout) pour pré-remplir la fiche">
-              <Ic name="camera" cls="w-4 h-4" /> Scanner
-            </button>
-            <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
+                        <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
           </div>
 
           <div class="mt-4 space-y-2.5">
