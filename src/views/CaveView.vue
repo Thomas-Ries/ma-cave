@@ -223,10 +223,19 @@ function toggleDictee() {
   dicteeBuf = ""; dicteeTexte.value = "";
   dictee = creerDictee({
     onFinal: t => {
+      /* Commande vocale : finir par « ajouter / valider / enregistrer » → on enregistre */
+      if (/(?:ajoute[rz]?|valide[rz]?|enregistre[rz]?|confirme[rz]?)\s*[!.,]?\s*$/i.test(t.trim())) {
+        stopDictee();
+        if (canAdd.value && !saving.value) saveAdd();
+        return;
+      }
       dicteeBuf += " " + t;   /* on relit tout le tampon : un nom coupé en deux se recolle */
       const patch = parseDictee(dicteeBuf);
       if (patch.cave) {
-        if (cave.cavesConnues.includes(patch.cave)) { caveSel.value = patch.cave; delete patch.cave; }
+        /* comparaison insensible à la casse + orthographe canonique existante,
+           sinon « principale » dicté créerait un doublon de « Principale » */
+        const connue = cave.cavesConnues.find(c => c.toLowerCase().trim() === patch.cave.toLowerCase().trim());
+        if (connue) { caveSel.value = connue; delete patch.cave; }
         else newCave.value = true;   /* cave inconnue : on affiche l'input, n.cave déjà rempli */
       }
       const detail = ["appellation", "cepage", "region", "pays", "cuvee", "prix", "format", "apoDebut", "commentaire"].some(k => k in patch);
