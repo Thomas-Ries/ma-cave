@@ -505,8 +505,8 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
 
           <!-- Dictée vocale -->
           <div v-if="speechOK" class="mt-3 flex items-center gap-2">
-            <button type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white animate-pulse' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
-              <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Écoute…' : 'Dicter' }}
+            <button type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
+              <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
             <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "nom Domaine des Lambrays, millésime 2019, catégorie rouge, six bouteilles, prix quinze euros…" }}</p>
           </div>

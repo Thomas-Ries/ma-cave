@@ -141,7 +141,9 @@ export function creerDictee({ onFinal, onInterim, onErreur } = {}) {
   rec.lang = "fr-FR";
   rec.continuous = true;
   rec.interimResults = true;
-  let actif = false, mort = false;
+  /* gen = jeton de génération : seul le dernier start() peut relancer une session.
+     Sans lui, un onend en retard redémarrait le micro après un stop (session zombie). */
+  let actif = false, gen = 0;
   rec.onresult = (e) => {
     let interim = "", final = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -151,21 +153,30 @@ export function creerDictee({ onFinal, onInterim, onErreur } = {}) {
     if (final && onFinal) onFinal(final);
     if (onInterim) onInterim(interim);
   };
-  /* iOS coupe souvent la reconnaissance après une pause : on redémarre tant que actif */
+  /* iOS coupe souvent la reconnaissance après une pause : on relance tant que actif,
+     avec un léger délai pour laisser le moteur retomber (start immédiat → InvalidState). */
   rec.onend = () => {
-    if (actif && !mort) { try { rec.start(); return; } catch {} }
+    const g = gen;
+    setTimeout(() => { if (actif && gen === g) { try { rec.start(); } catch {} } }, 250);
   };
   rec.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      actif = false; mort = true;
+      actif = false; gen++;
       onErreur && onErreur("Micro refusé — autorise le micro dans les réglages");
     } else if (e.error === "no-speech" || e.error === "aborted" || e.error === "network") {
-      /* silencieux : onend redémarrera la session */
+      /* silencieux : onend relancera la session si nécessaire */
     } else if (onErreur) onErreur(null, e.error);
   };
   return {
-    start() { actif = true; mort = false; try { rec.start(); } catch {} },
-    stop() { actif = false; try { rec.stop(); } catch {} },
+    start() { gen++; actif = true; try { rec.start(); } catch {} },
+    /* Coupe net : on détache TOUT callback (aucun onend ne peut relancer),
+       abort() tue la session immédiatement (stop() seul la laisse vivre sur iOS). */
+    stop() {
+      gen++; actif = false;
+      rec.onend = null; rec.onresult = null; rec.onerror = null;
+      try { rec.abort(); } catch {}
+      try { rec.stop(); } catch {}
+    },
     get actif() { return actif; },
   };
 }
