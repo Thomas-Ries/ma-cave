@@ -64,7 +64,20 @@ export async function lireAvecZxing(video, onStop) {
   });
 }
 
+/* Normalisation : GS1 DataMatrix (AI 01 = GTIN-14, "(01)…" ou "01…" en tête)
+   ou GTIN brut sur 14 chiffres → EAN-13 ; sinon on garde les chiffres tels quels. */
+export function normaliseCode(txt) {
+  const s = String(txt || "").trim();
+  let m = s.match(/(?:\(01\)|^01)(\d{14})/);
+  let d = m ? m[1] : (/^\d{14}$/.test(s) ? s : s.replace(/\D/g, ""));
+  if (d.length === 14 && d[0] === "0") d = d.slice(1); /* GTIN-14 → EAN-13 */
+  return /^(?:\d{8}|\d{12}|\d{13})$/.test(d) ? d : "";
+}
+
 /* ---------- OpenFoodFacts : code → patch de fiche ---------- */
+/* Deux bases libres, même API : OpenFoodFacts (alimentaire, vins de grande
+   distribution) puis OpenProductsFacts (produits hors alimentaire). */
+const BASES = ["https://world.openfoodfacts.org/api/v2/product/", "https://world.openproductsfacts.org/api/v2/product/"];
 const SPIRITUEUX = /spirit|whisk|whiskey|vodka|rhum|rum\b|gin\b|cognac|armagnac|calvados|liqueur|liquor|eau-de-vie|tequila|mezcal|absinthe|sake|pastis/i;
 const CHATONS = [
   [/champagne/i, "Champagne"], [/cremant|crémant/i, "Crémant"],
@@ -74,10 +87,14 @@ const CHATONS = [
 ];
 
 export async function chercheProduit(code) {
-  const r = await fetch("https://world.openfoodfacts.org/api/v2/product/" + encodeURIComponent(code) + ".json");
-  if (!r.ok) return null;
-  const j = await r.json().catch(() => null);
-  const p = j && j.product;
+  let p = null;
+  for (const base of BASES) {
+    let r;
+    try { r = await fetch(base + encodeURIComponent(code) + ".json"); } catch { continue; } /* hors ligne → base suivante */
+    if (!r.ok) continue;
+    const j = await r.json().catch(() => null);
+    if (j && j.product) { p = j.product; break; }
+  }
   if (!p) return null;
 
   const cats = [p.categories, ...(p.categories_tags || [])].join(" ");

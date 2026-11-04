@@ -294,7 +294,7 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.67</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.68</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

@@ -8,7 +8,7 @@ import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
-import { ouvrirCamera, lireAvecDetecteur, lireAvecZxing, barcodeDetectorDispo, chercheProduit } from "../lib/scan.js";
+import { ouvrirCamera, lireAvecDetecteur, lireAvecZxing, barcodeDetectorDispo, chercheProduit, normaliseCode } from "../lib/scan.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -254,17 +254,20 @@ async function demarrerScan() {
       scanStop = () => {};
     }
     scanMsg.value = "Vise le code-barres de la bouteille";
-    const code = barcodeDetectorDispo()
+    const brut = barcodeDetectorDispo()
       ? await lireAvecDetecteur(scanVideo.value)
       : await lireAvecZxing(scanVideo.value, stop => { scanStop = stop; });
     finScan();
+    const code = normaliseCode(brut);
+    if (!code) { cave.toast("Code lu illisible (" + String(brut).slice(0, 20) + ") — réessaie en tenant l'étiquette bien à plat"); return; }
     try {
       const patch = await chercheProduit(code);
       if (patch) {
         appliquePatch(patch);
         cave.toast("Champs pré-remplis depuis le code-barres — complète ou dicte le reste");
       } else {
-        cave.toast("Code " + code + " inconnu — remplis la fiche à la main ou dicte");
+        appliquePatch({ commentaire: "Code-barres " + code }); /* on garde la trace du code scanné */
+        cave.toast("Code " + code + " lu, mais produit absent des bases libres — code noté dans la fiche, complète le reste");
       }
     } catch {
       cave.toast("Produit introuvable (hors ligne ?) — remplis à la main ou dicte");
