@@ -167,5 +167,6 @@ export function lienPartage(b) {
     ap: { d: b.apoDebut ?? b.apoAuto?.debut ?? null, f: b.apoFin ?? (b.apoDebut != null ? b.apoDebut : b.apoAuto?.fin) ?? null },
   };
   const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  return new URL("partage.html#" + b64, location.origin).href;
+  /* /partage?b=… — page publique servie par le WORKER (jamais l'app, jamais l'écran de code) */
+  return new URL("/partage?b=" + b64, location.origin).href;
 }

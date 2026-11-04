@@ -398,9 +398,146 @@ async function handleSyncPost(request, env) {
   return json({ ok: false, error: "Action inconnue" }, 400);
 }
 
+/* ================= Pages publiques : /partage et /apropos =================
+ * Servies directement par le worker : jamais de SPA-fallback vers l'app,
+ * jamais d'écran de code — un visiteur ne voit QUE ces deux pages.
+ *   /partage?b=<base64url> → carte publique d'une bouteille (lien de partage)
+ *   /apropos              → présentation de l'app (carte promo)
+ * Aucune donnée n'est lue côté serveur : la fiche voyage dans l'URL, encodée
+ * par l'app (jamais prix, quantité, commentaire, photo, emplacement). */
+
+const CAT_COLORS_PUB = { Rouge: "#7A2E3E", Blanc: "#A8842C", "Rosé": "#D98A96", Champagne: "#C4A35A", "Crémant": "#8FBF9F", Effervescent: "#4A7856", Spiritueux: "#7A8B2E" };
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+const PUB_CSS = `
+  :root { --cream:#FAF6F1; --ink:#2B2724; --accent:#7A2E3E; --gold:#A8842C; --riesling:#D9C589; --hairline:#EAE2D9; --muted:#8A7F75; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--cream); color:var(--ink); font-family:Georgia,"Times New Roman",serif; display:flex; min-height:100vh; align-items:center; justify-content:center; padding:20px 14px; }
+  .carte { width:400px; max-width:100%; background:#fff; border:1px solid var(--hairline); box-shadow:0 1px 2px rgba(43,39,36,.03),0 10px 30px rgba(43,39,36,.08); overflow:hidden; }
+  .liseret { height:5px; background:linear-gradient(90deg,var(--accent) 0 55%,var(--riesling) 55% 78%,var(--gold) 78% 100%); }
+  .inner { padding:28px 28px 22px; }
+  .eyebrow { font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:var(--gold); text-align:center; }
+  h1 { font-size:24px; font-weight:normal; text-align:center; margin-top:8px; line-height:1.25; word-break:break-word; }
+  .sous { text-align:center; color:var(--muted); font-size:14px; font-style:italic; margin-top:4px; word-break:break-word; }
+  .puce { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:1px; }
+  .note-badge { display:flex; align-items:center; justify-content:center; margin-top:18px; }
+  .note-val { background:var(--riesling); width:56px; height:56px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .note-val small { font-size:7.5px; letter-spacing:.2em; text-transform:uppercase; }
+  .note-val b { font-size:19px; font-weight:normal; line-height:1; }
+  dl { margin-top:18px; font-size:14px; }
+  dl > div { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--hairline); }
+  dl > div:last-child { border-bottom:0; }
+  dt { color:var(--muted); } dd { text-align:right; }
+  .apogee { margin-top:16px; padding:14px 16px; background:rgba(217,197,137,.18); border:1px solid rgba(217,197,137,.55); font-size:14px; text-align:center; }
+  .apogee small { display:block; font-family:-apple-system,system-ui,sans-serif; font-size:9.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+  .cta { display:block; margin-top:22px; text-align:center; }
+  .cta a { display:inline-flex; align-items:center; gap:9px; background:var(--accent); color:#fff; text-decoration:none; padding:12px 24px; font-size:14px; letter-spacing:.04em; box-shadow:0 8px 20px rgba(122,46,62,.3); }
+  .cta p { font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-top:10px; }
+  .erreur { text-align:center; padding:60px 20px; font-style:italic; color:var(--muted); }
+  h1.grand { font-size:42px; }
+  .vitrine { position:relative; height:230px; margin:26px -6px 10px; text-align:center; }
+  .badge-note { position:absolute; left:calc(50% + 46px); top:88px; background:var(--riesling); color:var(--ink); width:74px; height:74px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(43,39,36,.18); z-index:3; }
+  .badge-note small { font-size:8.5px; letter-spacing:.22em; text-transform:uppercase; }
+  .badge-note b { font-size:26px; font-weight:normal; line-height:1.05; }
+  .ligne { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--hairline); text-align:left; }
+  .ligne:last-of-type { border-bottom:0; }
+  .ligne .t b { font-weight:normal; font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:2px; }
+  .ligne .t span { color:var(--muted); font-size:12.5px; font-style:italic; }
+  .verre { display:inline-flex; }
+`;
+
+function pubPage(title, body) {
+  return new Response(
+    `<!doctype html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${esc(title)}</title><meta name="robots" content="noindex"><style>${PUB_CSS}</style></head><body>${body}</body></html>`,
+    { headers: { "Content-Type": "text/html; charset=utf-8", "X-Robots-Tag": "noindex", "Cache-Control": "public, max-age=300" } }
+  );
+}
+
+/* Décode un code base64url UTF-8 (payload du lien de partage) */
+function decodeCode(code) {
+  try {
+    let s = String(code || "").replace(/-/g, "+").replace(/_/g, "/");
+    while (s.length % 4) s += "=";
+    const bytes = Uint8Array.from(atob(s), c => c.charCodeAt(0));
+    const o = JSON.parse(new TextDecoder().decode(bytes));
+    return o && o.n ? o : null;
+  } catch { return null; }
+}
+
+function fenetreApogee(ap) {
+  if (!ap || ap.d == null) return null;
+  const f = ap.f != null ? ap.f : ap.d, y = new Date().getFullYear();
+  if (y > f) return "à boire sans attendre — apogée dépassée, mais tout va bien";
+  if (y >= ap.d) return "en pleine apogée — c'est le moment";
+  if (ap.d - y <= 2) return "à ouvrir bientôt — apogée " + ap.d + (ap.f != null ? "–" + ap.f : "");
+  return "à garder encore — apogée " + ap.d + (ap.f != null ? "–" + ap.f : "");
+}
+
+const ERREUR_LIEN = `<div class="carte"><div class="liseret"></div><div class="erreur">Ce lien de partage est incomplet ou invalide.</div></div>`;
+
+function pagePartage(code) {
+  const o = decodeCode(code);
+  if (!o) return pubPage("Partage — Ma Cave", ERREUR_LIEN);
+  const cat = o.cat || "Rouge";
+  const spirit = cat === "Spiritueux";
+  const lignes = [];
+  if (o.m != null) lignes.push(["Millésime", o.m]);
+  if (spirit && o.s) lignes.push(["Mention", o.s]);
+  if (!spirit && o.ce) lignes.push(["Cépage", [o.ce, o.s].filter(Boolean).join(" · ")]);
+  if (o.a) lignes.push(["Appellation", o.a]);
+  if (o.r) lignes.push(["Région", o.r]);
+  const ap = fenetreApogee(o.ap);
+  const body = `<div class="carte"><div class="liseret"></div><div class="inner">
+    <p class="eyebrow">Une bouteille de la cave</p>
+    <h1><span class="puce" style="background:${esc(CAT_COLORS_PUB[cat] || "#8A7F75")}"></span>${esc(o.n)}</h1>
+    ${o.c ? `<p class="sous">${esc(o.c)}</p>` : ""}
+    ${o.note != null ? `<div class="note-badge"><div class="note-val"><small>Note</small><b>${esc(o.note)}</b></div></div>` : ""}
+    ${lignes.length ? `<dl>${lignes.map(l => `<div><dt>${esc(l[0])}</dt><dd>${esc(l[1])}</dd></div>`).join("")}</dl>` : ""}
+    ${ap ? `<div class="apogee"><small>Apogée</small>${esc(ap)}</div>` : ""}
+    <div class="cta"><a href="/apropos">Découvrir Ma Cave</a><p>L&rsquo;app de cave gratuite — sans compte, hors ligne</p></div>
+  </div></div>`;
+  return pubPage((o.n || "Ma Cave") + " — à déguster", body);
+}
+
+function pageApropos() {
+  const BOUTEILLE_SVG = `<svg width="64" height="210" viewBox="0 0 64 210" xmlns="http://www.w3.org/2000/svg">
+    <path d="M26 6 h12 v18 c0 7 8 12 8 24 v150 c0 4 -3 7 -7 7 H25 c-4 0 -7 -3 -7 -7 V48 c0 -12 8 -17 8 -24 Z" fill="#7A2E3E"/>
+    <path d="M26 2 h12 c1.6 0 3 1.4 3 3 v3 H23 V5 c0 -1.6 1.4 -3 3 -3 Z" fill="#2B2724"/>
+    <rect x="18" y="88" width="28" height="62" fill="#FAF6F1" stroke="#EAE2D9"/>
+    <line x1="22" y1="98" x2="42" y2="98" stroke="#D9C589" stroke-width="2"/>
+    <text x="32" y="114" font-family="Georgia, serif" font-size="9" fill="#2B2724" text-anchor="middle" letter-spacing="1">CHÂTEAU</text>
+    <text x="32" y="126" font-family="Georgia, serif" font-size="7" fill="#8A7F75" text-anchor="middle" letter-spacing="2">APPELLATION</text>
+    <text x="32" y="140" font-family="Georgia, serif" font-size="8" fill="#7A2E3E" text-anchor="middle" letter-spacing="1">2019</text>
+  </svg>`;
+  const ic = (d, c) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.6">${d}</svg>`;
+  const ligne = (svg, t, s) => `<div class="ligne">${svg}<div class="t"><b>${t}</b><span>${s}</span></div></div>`;
+  const body = `<div class="carte"><div class="liseret"></div><div class="inner">
+    <p class="eyebrow">L&rsquo;app des caves qui dorment bien</p>
+    <h1 class="grand">Ma Cave.</h1>
+    <p class="sous">Ta cave à vin, dans ta poche.<br>Elle sait quand ouvrir chaque bouteille.</p>
+    <div class="vitrine">${BOUTEILLE_SVG}<div class="badge-note"><small>Apogée</small><b>2026</b></div></div>
+    ${ligne(ic('<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>', "#7A2E3E"), "Moteur d&rsquo;apogée", "80 appellations — il te dit quand boire, pas quand vendre.")}
+    ${ligne(ic('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', "#7A2E3E"), "Dictée vocale", "« Domaine des Lambrays 2019, six bouteilles » — et c&rsquo;est en cave.")}
+    ${ligne(ic('<path d="M17.5 18a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.6A4 4 0 0 0 7 18Z"/><path d="M12 21v-7m0 0-2.5 2.5M12 14l2.5 2.5"/>', "#7A2E3E"), "Suggestion du soir", "La météo, la saison et ton apogée choisissent la bouteille.")}
+    ${ligne(ic('<path d="M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6Z"/><path d="m9 12 2 2 4-4"/>', "#7A8B2E"), "Tes données, chez toi", "Gratuite, sans compte, hors ligne — synchronisée dans ton Notion.")}
+    <div class="cta"><a href="/">Installer Ma Cave
+      <span class="verre"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M8 2h8l-1 7a3.5 3.5 0 0 1-6 0ZM12 13v7M8 21h8"/></svg></span></a>
+    <p>Sur iPhone : Partager → « Sur l&rsquo;écran d&rsquo;accueil » · sur Android : menu → « Installer l&rsquo;application »</p></div>
+    <p class="sous" style="margin-top:16px;font-size:11.5px">Ta future cave est vierge : les bouteilles vivent sur TON appareil, jamais ici.</p>
+  </div></div>`;
+  return pubPage("Ma Cave — ta cave à vin, dans ta poche", body);
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    /* Pages publiques : AVANT tout le reste — aucun risque de retomber sur l'app */
+    if (url.pathname === "/partage") return pagePartage(url.searchParams.get("b") || "");
+    if (url.pathname === "/apropos") return pageApropos();
 
     if (url.pathname === "/api/avatar") {
       if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", AVATAR_TITLE, AVATAR_PROP);
