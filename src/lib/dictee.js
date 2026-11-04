@@ -87,7 +87,7 @@ export function parseDictee(texte, fiche) {
     }
     BORNE_GLOB.lastIndex = m.index + 1;
   }
-  if (!segs.length) return patch;
+  if (!segs.length) return raffineNom(t, patch);   /* pas de mot-clé : « Domaine X 2019 rouge » */
   for (let i = 0; i < segs.length; i++) {
     const fin = i + 1 < segs.length ? segs[i + 1].start : t.length;
     let v = norm(t.slice(segs[i].start, fin));
@@ -103,9 +103,52 @@ export function parseDictee(texte, fiche) {
 
 function maj(v) { return v ? v.charAt(0).toUpperCase() + v.slice(1) : v; }
 
+/* Nom dicté SANS mots-clés (« Domaine X 2019 rouge six bouteilles ») : on
+   extrait quand même les infos évidentes pour ne pas tout mettre dans « nom ». */
+function raffineNom(v, patch) {
+  let reste = v;
+  /* prix : « 15 euros », « 15,50 € » */
+  if (patch.prix == null) {
+    const pe = reste.match(/(\d+(?:[.,]\d{1,2})?)\s*(?:euros?|€)/i);
+    if (pe) { const n = nbFr(pe[1]); if (n != null) { patch.prix = n; reste = reste.replace(pe[0], " "); } }
+  }
+  /* quantité : « six bouteilles » */
+  if (patch.quantite == null) {
+    const qe = reste.match(/([a-zà-ÿ-]+|\d+)\s+bouteilles?/i);
+    if (qe) { const n = nbFr(qe[1]); if (n != null && n >= 1) { patch.quantite = Math.round(n); reste = reste.replace(qe[0], " "); } }
+  }
+  /* millésime : 4 chiffres, ou « deux mille dix-neuf » */
+  if (patch.millesime == null) {
+    const ye = reste.match(/\b(19\d{2}|20\d{2})\b/);
+    if (ye) { patch.millesime = parseInt(ye[0], 10); reste = reste.replace(ye[0], " "); }
+    else {
+      const yl = reste.match(/\bdeux\s+mille(?:\s+[a-zà-ÿ-]+)?/i);
+      if (yl) { const n = nbFr(yl[0]); if (n != null && n >= 1900 && n <= 2100) { patch.millesime = Math.round(n); reste = reste.replace(yl[0], " "); } }
+    }
+  }
+  /* catégorie : couleur détachée du nom. Retirée seulement si elle n'ouvre pas
+     le nom (« Champagne Bollinger ») et qu'elle suit un millésime ou précède
+     autre chose — sinon « Clos Rouge » deviendrait « Clos ». */
+  if (patch.categorie == null) {
+    const ce = reste.match(/\b(?:vin\s+)?(rouge|blancs?|ros[ée]e?|champagne|cr[ée]mants?|effervescents?|moelleux|liquoreux|spiritueux)\b/i);
+    if (ce) {
+      const avant = reste.slice(0, ce.index).trim();
+      const apres = reste.slice(ce.index + ce[0].length).replace(/^[\s,.;:–—-]+/, "");
+      const anneeAvant = patch.millesime != null || /\b(19|20)\d{2}\b/.test(avant) || /\bdeux\s+mille/i.test(avant);
+      if (avant && (anneeAvant || apres)) {
+        const hit = CATS_MAP.find(([re]) => re.test(ce[1]));
+        if (hit) { patch.categorie = hit[1]; reste = avant + " " + apres; }
+      }
+    }
+  }
+  reste = reste.replace(/\s{2,}/g, " ").replace(/^[\s,.;:–—-]+/, "").replace(/[\s,.;:–—-]+$/, "").trim();
+  if (reste.length > 1) patch.nom = maj(reste);
+  return patch;
+}
+
 function applique(f, v, patch) {
   switch (f) {
-    case "nom": if (v.length > 1) patch.nom = maj(v.replace(/^(?:vin|cuvée)\s+/i, "")); break;
+    case "nom": if (v.length > 1) raffineNom(v.replace(/^(?:vin|cuvée)\s+/i, ""), patch); break;
     case "categorie": { const hit = CATS_MAP.find(([re]) => re.test(v)); if (hit) patch.categorie = hit[1]; break; }
     case "millesime": { const n = nbFr(v); if (n != null && n >= 1900 && n <= 2100) patch.millesime = Math.round(n); break; }
     case "quantite": { const n = nbFr(v.replace(/bouteilles?/gi, "")); if (n != null && n >= 1 && n <= 999) patch.quantite = Math.round(n); break; }

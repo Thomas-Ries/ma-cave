@@ -3,7 +3,8 @@ import { parseDictee, nbFr } from "../src/lib/dictee.js";
 
 let ok = 0, ko = 0;
 function eq(reel, attendu, label) {
-  const a = JSON.stringify(reel), b = JSON.stringify(attendu);
+  const trie = o => JSON.stringify(o == null ? o : Object.keys(o).sort().reduce((r, k) => (r[k] = o[k], r), {}));
+  const a = trie(reel), b = trie(attendu);
   if (a === b) { ok++; console.log(`  ✅ ${label}`); }
   else { ko++; console.log(`  ❌ ${label}\n     obtenu : ${a}\n     attendu: ${b}`); }
 }
@@ -54,11 +55,44 @@ eq(
   "vin rouge → Rouge, vingt euros"
 );
 eq(parseDictee("", {}), {}, "silence → rien");
-eq(parseDictee("bonjour ça va", {}), {}, "phrase sans mot-clé → rien");
+eq(parseDictee("bonjour ça va", {}), { nom: "Bonjour ça va" }, "phrase sans mot-clé → devient le nom");
 eq(
   parseDictee("nom Trimbach"),
   { nom: "Trimbach" },
   "nom seul"
+);
+
+
+console.log("Moteur de dictée — sans mots-clés (style naturel)");
+eq(
+  parseDictee("Domaine David Beaupère 2019 rouge six bouteilles 15 euros"),
+  { nom: "Domaine David Beaupère", millesime: 2019, categorie: "Rouge", quantite: 6, prix: 15 },
+  "tout sans mots-clés"
+);
+eq(
+  parseDictee("Domaine des Lambrays deux mille dix-neuf"),
+  { nom: "Domaine des Lambrays", millesime: 2019 },
+  "millésime en lettres sans mot-clé"
+);
+eq(
+  parseDictee("Clos Rouge"),
+  { nom: "Clos Rouge" },
+  "« Clos Rouge » : la couleur fait partie du nom"
+);
+eq(
+  parseDictee("Champagne Bollinger 2019"),
+  { nom: "Champagne Bollinger", millesime: 2019 },
+  "« Champagne Bollinger » : catégorie pas volée au nom"
+);
+eq(
+  parseDictee("Trimbach 2019 blanc"),
+  { nom: "Trimbach", millesime: 2019, categorie: "Blanc" },
+  "nom nu + année + couleur finale après année"
+);
+eq(
+  parseDictee("Domaine Weinbach deux mille vingt-trois quantité douze bouteilles"),
+  { nom: "Domaine Weinbach", millesime: 2023, quantite: 12 },
+  "année en lettres + quantité"
 );
 
 console.log(`\n${ok + ko} cas — ${ok} réussis${ko ? ", " + ko + " ÉCHecs" : ""}`);

@@ -209,9 +209,13 @@ function onAddPhoto(ev) {
 const speechOK = speechSupporte();
 const dicteeOn = ref(false);
 const dicteeTexte = ref("");
-let dictee = null, dicteeBuf = "";
+let dictee = null, dicteeBuf = "", dicteeVeille = null;
+/* iOS : la dictée Web Speech est capricieuse en PWA (micro silencieux) —
+   si rien n'est capté après 5 s on le dit au lieu de laisser croire que ça marche. */
+const isIOS = typeof navigator !== "undefined" && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 function stopDictee() {
   dicteeOn.value = false; dicteeTexte.value = "";
+  if (dicteeVeille) { clearTimeout(dicteeVeille); dicteeVeille = null; }
   if (dictee) { dictee.stop(); dictee = null; }
 }
 function toggleDictee() {
@@ -229,11 +233,14 @@ function toggleDictee() {
       Object.assign(n.value, patch);
       if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs dictés */
     },
-    onInterim: t => { dicteeTexte.value = t || ""; },
+    onInterim: t => { dicteeTexte.value = t || ""; if (dicteeVeille) { clearTimeout(dicteeVeille); dicteeVeille = null; } },
     onErreur: msg => { stopDictee(); cave.toast(msg || "Dictée indisponible"); },
   });
   dictee.start();
   dicteeOn.value = true;
+  if (isIOS) dicteeVeille = setTimeout(() => {
+    if (dicteeOn.value && !dicteeTexte.value) cave.toast("Rien capté — sur iPhone, la dictée marche mieux dans Safari (onglet) ou avec le micro du clavier sur chaque champ");
+  }, 5000);
 }
 watch(showAdd, v => { if (!v) stopDictee(); });
 
@@ -508,7 +515,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
             <button type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
-            <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "nom Domaine des Lambrays, millésime 2019, catégorie rouge, six bouteilles, prix quinze euros…" }}</p>
+            <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
           </div>
 
           <div class="mt-4 space-y-2.5">
