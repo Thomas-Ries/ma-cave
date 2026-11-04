@@ -4,7 +4,7 @@
 import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { chercheVille, villeDepuis } from "../lib/soir.js";
-import { inscrireBiometrie, verifierBiometrie, cleDe, supprimerCle, biometrieDispo, biomometriePrete } from "../lib/face.js";
+import { inscrireBiometrie, verifierBiometrie, cleDe, supprimerCle, biometrieDispo, biomometriePrete, enPWA } from "../lib/face.js";
 import Ic from "./Ic.vue";
 
 const cave = useCave();
@@ -47,7 +47,10 @@ const bioDate = computed(() => {
   try { const v = JSON.parse(localStorage.getItem("ma-cave-bio-" + cave.PROFIL) || "null"); return v?.ts; } catch { return null; }
 });
 const bioDispo = ref(true);
+const bioPlateforme = ref(true);   // l'appareil a une vraie biométrie (indépendant de la PWA)
+const pwaInstallee = enPWA();
 biomometriePrete().then(ok => { bioDispo.value = ok; });
+try { window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(v => { bioPlateforme.value = v; }); } catch {}
 function bioNom() { return /iPhone|iPad/i.test(navigator.userAgent) ? "Face ID" : "l'empreinte"; }
 async function activerBio() {
   bioErr.value = ""; bioMsg.value = ""; bioTest.value = "";
@@ -236,6 +239,8 @@ function confirmDisable() {
           <Ic name="user" cls="w-4 h-4" :class="aBio ? 'text-accent' : 'text-muted'" />
           <span v-if="aBio">Ta cave s'ouvre par {{ bioNom() }} au démarrage</span>
           <span v-else-if="bioDispo">Pas activé — la cave ouvre sur le choix du profil</span>
+          <span v-else-if="!pwaInstallee">Uniquement dans l'app installée (écran d'accueil)</span>
+          <span v-else-if="!bioPlateforme">Cet appareil n'a pas de biométrie</span>
           <span v-else>Biométrie indisponible sur cet appareil / navigateur</span>
         </div>
         <div v-if="bioDate" class="text-[11px] text-muted mt-1">Activé le {{ new Date(bioDate).toLocaleDateString('fr-FR') }}</div>
@@ -251,6 +256,7 @@ function confirmDisable() {
         <p v-if="bioTest" class="text-[12px] mt-2" :class="bioTest.startsWith('✅') ? 'text-accent font-medium' : 'text-red'">{{ bioTest }}</p>
         <p v-if="bioSuppr && !aBio" class="text-[12px] text-muted mt-2">Biométrie supprimée — la cave rouvre sur le choix du profil.</p>
         <p v-if="bioErr" class="text-[11px] text-red mt-2">{{ bioErr }}</p>
+        <p v-if="!aBio && !pwaInstallee" class="text-[11px] text-muted mt-2 leading-relaxed">Sur Mac/PC ou dans le navigateur, la biométrie ne se propose pas : protège ta cave avec le code à 4 chiffres ci-dessous. Installe l'app sur l'écran d'accueil de ton iPhone/Android pour activer {{ bioNom() }}.</p>
         <p class="text-[10px] text-muted mt-3 leading-relaxed">C'est le système (Face ID sur iPhone, empreinte ou visage sur Android) qui vérifie — aucune donnée biométrique n'est stockée dans la cave, et un code protégé par PIN reste déverrouillable par biométrie.</p>
       </div>
 
@@ -286,7 +292,7 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.60</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.61</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

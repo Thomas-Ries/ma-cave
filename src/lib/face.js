@@ -48,11 +48,19 @@ export function biometrieDispo() {
   return typeof window !== "undefined" && !!window.PublicKeyCredential && !!navigator.credentials?.create;
 }
 
-/* Vrai check biométrique : y a-t-il Face ID / empreinte sur CET appareil ?
-   Si non, on n'ouvre aucun prompt (sinon le navigateur propose des clés
-   d'accès avec QR code, téléphone voisin, etc. — on n'en veut pas). */
+/* La biométrie ne marche QUE dans la PWA installée (écran d'accueil).
+   Sur Mac/PC ou navigateur classique : pas de prompt du tout — le
+   secours est le code à 4 chiffres du profil. */
+export function enPWA() {
+  return typeof window !== "undefined" &&
+    (window.matchMedia?.("(display-mode: standalone)")?.matches === true || window.navigator?.standalone === true);
+}
+
+/* Vrai check biométrique : PWA installée ET Face ID / empreinte sur CET
+   appareil. Si non, on n'ouvre aucun prompt (sinon le navigateur propose
+   des clés d'accès avec QR code, téléphone voisin, etc. — on n'en veut pas). */
 export async function biomometriePrete() {
-  if (!biometrieDispo()) return false;
+  if (!enPWA() || !biometrieDispo()) return false;
   try { return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); }
   catch { return false; }
 }
