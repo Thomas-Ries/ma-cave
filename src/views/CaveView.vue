@@ -449,7 +449,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
       <div class="w-[3px] self-stretch shrink-0" :class="cave.apogeeFiltre ? 'bg-accent' : 'bg-riesling'"></div>
       <button @click="cave.apogeeFiltre = !cave.apogeeFiltre; cave.cavePage = 1" class="flex-1 min-w-0 py-3 pl-4 pr-2 text-left">
         <p class="text-xs font-medium" :class="cave.apogeeFiltre ? 'text-white' : 'text-ink'">{{ cave.apogeeFiltre ? 'Filtre : à boire cette année' : 'À boire cette année' }}</p>
-        <p class="text-[10px]" :class="cave.apogeeFiltre ? 'text-white/80 italic' : 'text-muted'">{{ cave.apogeeFiltre ? 'tap pour retirer le filtre' : (cave.apogeeStats.passe > 0 ? cave.apogeeStats.passe + ' passée(s) l'apogée · tap pour filtrer' : 'en apogée cette année · tap pour filtrer') }}</p>
+        <p class="text-[10px]" :class="cave.apogeeFiltre ? 'text-white/80 italic' : 'text-muted'">{{ cave.apogeeFiltre ? 'tap pour retirer le filtre' : (cave.apogeeStats.passe > 0 ? cave.apogeeStats.passe + ' passée(s) l’apogée · tap pour filtrer' : 'en apogée cette année · tap pour filtrer') }}</p>
       </button>
       <div class="flex items-center pr-3">
         <span class="min-w-[30px] h-[30px] rounded-full flex items-center justify-center font-serif" :class="cave.apogeeFiltre ? 'bg-white text-accent' : 'bg-riesling text-ink'">{{ cave.apogeeStats.boire }}</span>
