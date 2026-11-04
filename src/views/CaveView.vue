@@ -593,17 +593,20 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <ProfilSheet :open="showProfil" :on-avatar="onAvatar" @close="showProfil = false" />
     <ImportPreview v-if="importRows" :rows="importRows" @close="importRows = null" />
 
-    <!-- Scan code-barres : caméra plein cadre, code détecté → recherche -->
-    <div v-if="scanOn" class="fixed inset-0 z-[70] bg-ink/80 flex items-center justify-center p-6" @click.self="finScan">
-      <div class="bg-white rounded-xl2 p-5 w-full max-w-xs text-center">
-        <p class="font-serif text-lg mb-1">Scanner la bouteille</p>
-        <p class="text-xs text-muted mb-4">Surtout pour les spiritueux — le code pré-remplit la fiche</p>
-        <div class="relative mx-auto w-56 h-44 rounded-xl2 overflow-hidden bg-cream border border-hairline">
-          <video ref="scanVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
-          <span class="absolute inset-x-6 top-1/2 h-0.5 bg-accent pointer-events-none"></span>
-        </div>
-        <p class="text-xs text-muted mt-4">{{ scanMsg }}</p>
-        <button @click="finScan" class="mt-4 w-full py-2.5 rounded-full border border-hairline text-sm">Annuler</button>
+    <!-- Scan code-barres : caméra plein écran, cadre large adapté aux codes -->
+    <div v-if="scanOn" class="fixed inset-0 z-[70] bg-black flex flex-col items-center justify-between px-6 py-6">
+      <div class="w-full max-w-md flex items-center justify-between">
+        <p class="font-serif text-lg text-white">Scanner la bouteille</p>
+        <button @click="finScan" class="p-2 -mr-2 rounded-full bg-white/10 text-white" title="Fermer le scanner"><Ic name="x" cls="w-5 h-5" /></button>
+      </div>
+      <div class="relative w-full max-w-md flex-1 min-h-0 rounded-xl2 overflow-hidden bg-black">
+        <video ref="scanVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+        <!-- cadre guide : rectangle large et haut, taillé pour un code-barres -->
+        <div class="absolute inset-x-5 top-1/2 -translate-y-1/2 h-32 border-2 border-white/90 rounded-xl pointer-events-none"></div>
+      </div>
+      <div class="w-full max-w-md">
+        <p class="text-xs text-white/80 text-center mt-4">{{ scanMsg || "Le code doit tenir dans le cadre — rapproche-toi si c'est flou" }}</p>
+        <button @click="finScan" class="mt-4 w-full py-2.5 rounded-full bg-white text-ink text-sm">Annuler</button>
       </div>
     </div>
 

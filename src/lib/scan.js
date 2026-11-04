@@ -9,6 +9,10 @@ export function barcodeDetectorDispo() {
   return typeof window !== "undefined" && "BarcodeDetector" in window;
 }
 
+/* Contraintes HD : la résolution par défaut (640×480) donne un code-barres
+   flou — on demande le maximum raisonnable que l'appareil accepte. */
+export const CONTRAINTES = { video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false };
+
 /* getUserMedia avec garde-fou : sur iPhone en PWA, la promesse peut rester
    pendante (bug WebKit connu) — on ne reste jamais bloqué sur « Ouverture ». */
 export function ouvrirCamera(video, delaiMs = 9000) {
@@ -16,7 +20,7 @@ export function ouvrirCamera(video, delaiMs = 9000) {
     if (!navigator.mediaDevices?.getUserMedia) return rej(new Error("inaccessible"));
     let fini = false;
     const t = setTimeout(() => { if (!fini) { fini = true; rej(new Error("delai")); } }, delaiMs);
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+    navigator.mediaDevices.getUserMedia(CONTRAINTES)
       .then(stream => {
         if (fini) { try { stream.getTracks().forEach(x => x.stop()); } catch {} return; } /* trop tard */
         fini = true; clearTimeout(t);
@@ -51,7 +55,9 @@ export async function lireAvecZxing(video, onStop) {
   onStop(stop);
   return new Promise((res, rej) => {
     try {
-      reader.decodeFromVideoDevice(undefined, video, (r) => {
+      /* decodeFromConstraints : permet d'imposer la résolution HD
+         (decodeFromVideoDevice reste en 640×480 → code-barres flou) */
+      reader.decodeFromConstraints(CONTRAINTES, video, (r) => {
         if (r) { stop(); res(r.getText()); }
       });
     } catch (e) { rej(e); }
