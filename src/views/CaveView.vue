@@ -8,6 +8,7 @@ import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
+import { reconnaitEtiquette } from "../lib/photoOcr.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -218,29 +219,62 @@ function stopDictee() {
   if (dicteeVeille) { clearTimeout(dicteeVeille); dicteeVeille = null; }
   if (dictee) { dictee.stop(); dictee = null; }
 }
+/* Fusionne un correctif (dictée ou photo) dans le formulaire, avec cave canonique */
+function appliquePatch(patch) {
+  if (patch.cave) {
+    /* comparaison insensible à la casse + orthographe canonique existante,
+       sinon « principale » dicté créerait un doublon de « Principale » */
+    const connue = cave.cavesConnues.find(c => c.toLowerCase().trim() === patch.cave.toLowerCase().trim());
+    if (connue) { caveSel.value = connue; delete patch.cave; }
+    else newCave.value = true;   /* cave inconnue : on affiche l'input, n.cave déjà rempli */
+  }
+  const detail = ["appellation", "cepage", "region", "pays", "cuvee", "prix", "format", "apoDebut", "commentaire"].some(k => k in patch);
+  Object.assign(n.value, patch);
+  if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs remplis */
+}
+
+/* ---------- Photo → champs reconnus (OCR Tesseract, 100 % local) ---------- */
+const ocrEnCours = ref(false);
+function onPhotoOcr(ev) {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f || ocrEnCours.value) return;
+  ocrEnCours.value = true;
+  photoFromFile(f, async data => {
+    n.value.photo = data;   /* l'étiquette devient la photo de la fiche */
+    try {
+      const patch = await reconnaitEtiquette(data);
+      const nb = Object.keys(patch).length;
+      if (nb) {
+        appliquePatch(patch);
+        cave.toast(`${nb} champ${nb > 1 ? "s" : ""} reconnu${nb > 1 ? "s" : ""} sur l'étiquette — dicte pour corriger ou compléter`);
+      } else cave.toast("Étiquette illisible — dicte les champs à la voix");
+    } catch {
+      cave.toast("Reconnaissance indisponible (en ligne ?) — dicte à la voix");
+    }
+    ocrEnCours.value = false;
+  });
+}
+
 function toggleDictee() {
   if (dicteeOn.value) { stopDictee(); return; }
   dicteeBuf = ""; dicteeTexte.value = "";
   dictee = creerDictee({
     onFinal: t => {
-      /* Commande vocale : finir par « ajouter / valider / enregistrer » → on enregistre */
-      if (/(?:ajoute[rz]?|valide[rz]?|enregistre[rz]?|confirme[rz]?)\s*[!.,]?\s*$/i.test(t.trim())) {
+      /* Commande vocale de fin : « … ajouter / valider / enregistrer / stop / terminer ».
+         On retire le mot de commande du morceau AVANT de l'analyser (sinon
+         « Domaine X rouge stop » mettrait « stop » dans le nom), on applique
+         les champs, PUIS on enregistre. */
+      const morceau = t.trim();
+      const cmd = /(ajoute[rz]?|valide[rz]?|enregistre[rz]?|confirme[rz]?|stop(?:per)?|termin[ée]e?)\s*[!.,]?\s*$/i.exec(morceau);
+      const utile = cmd ? morceau.slice(0, cmd.index).trim() : morceau;
+      if (utile) dicteeBuf += " " + utile;   /* on relit tout le tampon : un nom coupé en deux se recolle */
+      const patch = parseDictee(dicteeBuf);
+      appliquePatch(patch);
+      if (cmd) {
         stopDictee();
         if (canAdd.value && !saving.value) saveAdd();
-        return;
       }
-      dicteeBuf += " " + t;   /* on relit tout le tampon : un nom coupé en deux se recolle */
-      const patch = parseDictee(dicteeBuf);
-      if (patch.cave) {
-        /* comparaison insensible à la casse + orthographe canonique existante,
-           sinon « principale » dicté créerait un doublon de « Principale » */
-        const connue = cave.cavesConnues.find(c => c.toLowerCase().trim() === patch.cave.toLowerCase().trim());
-        if (connue) { caveSel.value = connue; delete patch.cave; }
-        else newCave.value = true;   /* cave inconnue : on affiche l'input, n.cave déjà rempli */
-      }
-      const detail = ["appellation", "cepage", "region", "pays", "cuvee", "prix", "format", "apoDebut", "commentaire"].some(k => k in patch);
-      Object.assign(n.value, patch);
-      if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs dictés */
     },
     onInterim: t => { dicteeTexte.value = t || ""; if (dicteeVeille) { clearTimeout(dicteeVeille); dicteeVeille = null; } },
     onErreur: msg => { stopDictee(); cave.toast(msg || "Dictée indisponible"); },
@@ -415,7 +449,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
       <div class="w-[3px] self-stretch shrink-0" :class="cave.apogeeFiltre ? 'bg-accent' : 'bg-riesling'"></div>
       <button @click="cave.apogeeFiltre = !cave.apogeeFiltre; cave.cavePage = 1" class="flex-1 min-w-0 py-3 pl-4 pr-2 text-left">
         <p class="text-xs font-medium" :class="cave.apogeeFiltre ? 'text-white' : 'text-ink'">{{ cave.apogeeFiltre ? 'Filtre : à boire cette année' : 'À boire cette année' }}</p>
-        <p class="text-[10px]" :class="cave.apogeeFiltre ? 'text-white/80 italic' : 'text-muted'">{{ cave.apogeeFiltre ? 'tap pour retirer le filtre' : (cave.apogeeStats.passe > 0 ? cave.apogeeStats.passe + ' passée(s) l\u2019apogée · tap pour filtrer' : 'en apogée cette année · tap pour filtrer') }}</p>
+        <p class="text-[10px]" :class="cave.apogeeFiltre ? 'text-white/80 italic' : 'text-muted'">{{ cave.apogeeFiltre ? 'tap pour retirer le filtre' : (cave.apogeeStats.passe > 0 ? cave.apogeeStats.passe + ' passée(s) l'apogée · tap pour filtrer' : 'en apogée cette année · tap pour filtrer') }}</p>
       </button>
       <div class="flex items-center pr-3">
         <span class="min-w-[30px] h-[30px] rounded-full flex items-center justify-center font-serif" :class="cave.apogeeFiltre ? 'bg-white text-accent' : 'bg-riesling text-ink'">{{ cave.apogeeStats.boire }}</span>
@@ -519,11 +553,15 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
             <Ic name="check" cls="w-4 h-4" /> Bouteille bien ajoutée
           </div>
 
-          <!-- Dictée vocale -->
-          <div v-if="speechOK" class="mt-3 flex items-center gap-2">
-            <button type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
+          <!-- Dictée vocale + photo -->
+          <div class="mt-3 flex items-center gap-2">
+            <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
+            <label class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs cursor-pointer" :class="ocrEnCours ? 'bg-accent text-white pointer-events-none' : 'bg-white border border-accent/40 text-accent'" :title="ocrEnCours ? 'Lecture de l'étiquette…' : 'Photographier l'étiquette pour remplir la fiche'">
+              <Ic name="camera" cls="w-4 h-4" /> {{ ocrEnCours ? 'Lecture…' : 'Photo' }}
+              <input type="file" accept="image/*" capture="environment" class="hidden" :disabled="ocrEnCours" @change="onPhotoOcr" />
+            </label>
             <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
           </div>
 
