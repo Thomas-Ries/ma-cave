@@ -438,8 +438,8 @@ const PUB_CSS = `
   .cta p { font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-top:10px; }
   .erreur { text-align:center; padding:60px 20px; font-style:italic; color:var(--muted); }
   h1.grand { font-size:42px; }
-  .vitrine { position:relative; height:230px; margin:26px -6px 10px; text-align:center; }
-  .badge-note { position:absolute; left:calc(50% + 46px); top:88px; background:var(--riesling); color:var(--ink); width:74px; height:74px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(43,39,36,.18); z-index:3; }
+  .vitrine { position:relative; height:196px; margin:26px -6px 10px; text-align:center; }
+  .badge-note { position:absolute; left:calc(50% + 52px); top:72px; background:var(--riesling); color:var(--ink); width:74px; height:74px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(43,39,36,.18); z-index:3; }
   .badge-note small { font-size:8.5px; letter-spacing:.22em; text-transform:uppercase; }
   .badge-note b { font-size:26px; font-weight:normal; line-height:1.05; }
   .ligne { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--hairline); text-align:left; }
@@ -503,14 +503,14 @@ function pagePartage(code) {
 }
 
 function pageApropos() {
-  const BOUTEILLE_SVG = `<svg width="64" height="210" viewBox="0 0 64 210" xmlns="http://www.w3.org/2000/svg">
-    <path d="M26 6 h12 v18 c0 7 8 12 8 24 v150 c0 4 -3 7 -7 7 H25 c-4 0 -7 -3 -7 -7 V48 c0 -12 8 -17 8 -24 Z" fill="#7A2E3E"/>
-    <path d="M26 2 h12 c1.6 0 3 1.4 3 3 v3 H23 V5 c0 -1.6 1.4 -3 3 -3 Z" fill="#2B2724"/>
-    <rect x="18" y="88" width="28" height="62" fill="#FAF6F1" stroke="#EAE2D9"/>
-    <line x1="22" y1="98" x2="42" y2="98" stroke="#D9C589" stroke-width="2"/>
-    <text x="32" y="114" font-family="Georgia, serif" font-size="9" fill="#2B2724" text-anchor="middle" letter-spacing="1">CHÂTEAU</text>
-    <text x="32" y="126" font-family="Georgia, serif" font-size="7" fill="#8A7F75" text-anchor="middle" letter-spacing="2">APPELLATION</text>
-    <text x="32" y="140" font-family="Georgia, serif" font-size="8" fill="#7A2E3E" text-anchor="middle" letter-spacing="1">2019</text>
+  const BOUTEILLE_SVG = `<svg width="70" height="176" viewBox="0 0 70 176" xmlns="http://www.w3.org/2000/svg">
+    <path d="M29 4 h12 c1.6 0 3 1.4 3 3 v3 H26 V7 c0 -1.6 1.4 -3 3 -3 Z" fill="#2B2724"/>
+    <path d="M28 10 h14 v22 c0 7 14 12 14 24 v108 c0 4 -3.5 7 -8 7 H22 c-4.5 0 -8 -3 -8 -7 V56 c0 -12 14 -17 14 -24 Z" fill="#7A2E3E"/>
+    <rect x="17" y="84" width="36" height="54" fill="#FAF6F1" stroke="#EAE2D9"/>
+    <line x1="22" y1="94" x2="48" y2="94" stroke="#D9C589" stroke-width="2"/>
+    <text x="35" y="110" font-family="Georgia, serif" font-size="10" fill="#2B2724" text-anchor="middle" letter-spacing="1">CHÂTEAU</text>
+    <text x="35" y="122" font-family="Georgia, serif" font-size="7" fill="#8A7F75" text-anchor="middle" letter-spacing="2">APPELLATION</text>
+    <text x="35" y="136" font-family="Georgia, serif" font-size="8" fill="#7A2E3E" text-anchor="middle" letter-spacing="1">2019</text>
   </svg>`;
   const ic = (d, c) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.6">${d}</svg>`;
   const ligne = (svg, t, s) => `<div class="ligne">${svg}<div class="t"><b>${t}</b><span>${s}</span></div></div>`;
@@ -522,10 +522,10 @@ function pageApropos() {
     ${ligne(ic('<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>', "#7A2E3E"), "Moteur d&rsquo;apogée", "80 appellations — il te dit quand boire, pas quand vendre.")}
     ${ligne(ic('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>', "#7A2E3E"), "Dictée vocale", "« Domaine des Lambrays 2019, six bouteilles » — et c&rsquo;est en cave.")}
     ${ligne(ic('<path d="M17.5 18a4.5 4.5 0 0 0 0-9 6 6 0 0 0-11.6 1.6A4 4 0 0 0 7 18Z"/><path d="M12 21v-7m0 0-2.5 2.5M12 14l2.5 2.5"/>', "#7A2E3E"), "Suggestion du soir", "La météo, la saison et ton apogée choisissent la bouteille.")}
-    ${ligne(ic('<path d="M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6Z"/><path d="m9 12 2 2 4-4"/>', "#7A8B2E"), "Tes données, chez toi", "Gratuite, sans compte, hors ligne — synchronisée dans ton Notion.")}
-    <div class="cta"><a href="/">Installer Ma Cave
+    ${ligne(ic('<path d="M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6Z"/><path d="m9 12 2 2 4-4"/>', "#7A8B2E"), "Tes données, chez toi", "Gratuite, sans compte, hors ligne — sauvegarde automatique.")}
+    <div class="cta"><a href="mailto:thomasries.dev@gmail.com?subject=Demande%20d%27ajout%20%C3%A0%20l%27appli%20Ma%20Cave">Demande d&rsquo;ajout à l&rsquo;appli
       <span class="verre"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M8 2h8l-1 7a3.5 3.5 0 0 1-6 0ZM12 13v7M8 21h8"/></svg></span></a>
-    <p>Sur iPhone : Partager → « Sur l&rsquo;écran d&rsquo;accueil » · sur Android : menu → « Installer l&rsquo;application »</p></div>
+    <p>Disponible sur PC, Mac et smartphone en appli</p></div>
     <p class="sous" style="margin-top:16px;font-size:11.5px">Ta future cave est vierge : les bouteilles vivent sur TON appareil, jamais ici.</p>
   </div></div>`;
   return pubPage("Ma Cave — ta cave à vin, dans ta poche", body);

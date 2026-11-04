@@ -135,7 +135,7 @@ watch(showListes, v => cave.overlay("listes", v));
 watch(importRows, v => cave.overlay("import", !!v));
 
 function blankAdd() {
-  return { nom: "", categorie: "Rouge", quantite: 1, millesime: null, prix: null, appellation: "", cepage: "", specificite: "", region: "", pays: "France", cave: "", cuvee: "", format: "Bouteille (75 cl)", statut: "En cave", commentaire: "", photo: null, apoDebut: null, apoFin: null };
+  return { nom: "", categorie: cave.db.filters.etage === "Spiritueux" ? "Spiritueux" : "Rouge", quantite: 1, millesime: null, prix: null, appellation: "", cepage: "", specificite: "", region: "", pays: "France", cave: "", cuvee: "", format: "Bouteille (75 cl)", statut: "En cave", commentaire: "", photo: null, apoDebut: null, apoFin: null };
 }
 const preFill = ref(false); /* pré-remplissage depuis une note d'achat : ne pas écraser n à l'ouverture */
 watch(showAdd, v => { if (v) { if (!preFill.value) { n.value = blankAdd(); addMore.value = false; addOk.value = false; newCave.value = false; caveSel.value = ""; } apoTouche.value = false; preFill.value = false; } });
@@ -448,7 +448,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
       <button v-for="t in ETAGES" :key="t.id" @click="setEtage(t.id)"
               class="px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 border"
               :class="(cave.db.filters.etage || 'Tout') === t.id ? 'bg-ink text-white border-ink' : 'bg-white border-hairline text-ink'">
-        <span v-if="t.id === 'Spiritueux'" class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Spiritueux"></span>
+        <span class="w-2 h-2 rounded-full" :style="'background:' + (t.id === 'Vin' ? cave.CAT_COLORS.Rouge : t.id === 'Spiritueux' ? cave.CAT_COLORS.Spiritueux : 'transparent')"></span>
         {{ t.label }}
         <span class="text-[10px] tabular-nums" :class="(cave.db.filters.etage || 'Tout') === t.id ? 'text-white/70' : 'text-muted'">{{ etageCounts ? (t.id === 'Vin' ? etageCounts.vins : t.id === 'Spiritueux' ? etageCounts.spirit : etageCounts.tout) : '' }}</span>
       </button>
@@ -627,7 +627,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <!-- Bascule Vin / Spiritueux : la fiche change de couleur et de champs -->
           <div class="mt-3 flex gap-1.5">
             <button type="button" @click="switchType(false)" class="flex-1 py-1.5 rounded-full text-xs border flex items-center justify-center gap-1.5" :class="!estSpirit ? 'bg-accent text-white border-accent' : 'bg-white border-hairline text-ink'">
-              <span class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Rouge"></span> Vin
+              <span class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Rouge"></span> Vins
             </button>
             <button type="button" @click="switchType(true)" class="flex-1 py-1.5 rounded-full text-xs border flex items-center justify-center gap-1.5" :class="estSpirit ? 'bg-chartreuse text-white border-chartreuse' : 'bg-white border-hairline text-ink'">
               <span class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Spiritueux"></span> Spiritueux
