@@ -1,17 +1,19 @@
 {
   "name": "ma-cave",
   "private": true,
-  "version": "2.9.63",
+  "version": "2.9.64",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node test/apogee.test.js && node test/dictee.test.js && node test/face.test.js"
+    "test": "node test/apogee.test.js && node test/dictee.test.js && node test/face.test.js && node test/template.test.js"
   },
   "dependencies": {
     "pinia": "^2.1.7",
     "vue": "^3.4.27",
-    "vue-router": "^4.3.2"
+    "vue-router": "^4.3.2",
+    "@zxing/library": "^0.21.3",
+    "@zxing/browser": "^0.1.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",

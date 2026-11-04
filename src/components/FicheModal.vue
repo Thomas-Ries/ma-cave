@@ -4,6 +4,7 @@ import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
 import { platsPourBouteille } from "../lib/accords.js";
+import { partagerBouteille } from "../lib/partage.js";
 import { splitNom, cepageCourt, photoFromFile, accTxt } from "../util.js";
 import Ic from "./Ic.vue";
 import { notePalier } from "../lib/noteEchelle.js";
@@ -154,6 +155,22 @@ const apo = computed(() => {
 });
 const accs = computed(() => (b.value && acc.value) ? platsPourBouteille(b.value, year) : []);
 
+/* Partage : carte PNG (photo, identité, apogée, note, 2-3 accords) —
+   sans le nombre de bouteilles, ça ne regarde personne */
+const partageEnCours = ref(false);
+async function partager() {
+  if (!b.value || partageEnCours.value) return;
+  partageEnCours.value = true;
+  try {
+    const accords = platsPourBouteille(b.value, year);
+    const r = await partagerBouteille(b.value, accords);
+    cave.toast(r === "telecharge" ? "Carte téléchargée — partage-la comme tu veux" : "Bonne dégustation !");
+  } catch {
+    cave.toast("Partage impossible sur cet appareil");
+  }
+  partageEnCours.value = false;
+}
+
 /* Légende d'échelle de notation (70–100, comme le carnet de dégustation) */
 const leg = computed(() => notePalier(noteVal.value));
 
@@ -234,7 +251,8 @@ watch(acc, v => cave.overlay("fiche-acc", v));
           <p v-if="b.quantite === 1 && cave.listesDe(b).length" class="text-[10px] text-muted mt-2">Une seule bouteille : elle ne peut être que dans « {{ cave.listesDe(b)[0].nom }} ».</p>
         </div>
 
-        <button @click="acc = true" class="w-full py-2.5 mt-4 mb-2 rounded-full bg-riesling/40 border border-riesling text-sm flex items-center justify-center gap-2" title="Les plats qui vont avec cette bouteille"><Ic name="sparkles" cls="w-5 h-5" /> Avec quoi la boire ?</button>
+        <button @click="acc = true" class="w-full py-2.5 mt-4 rounded-full bg-riesling/40 border border-riesling text-sm flex items-center justify-center gap-2" title="Les plats qui vont avec cette bouteille"><Ic name="sparkles" cls="w-5 h-5" /> Avec quoi la boire ?</button>
+        <button @click="partager" :disabled="partageEnCours" class="w-full py-2.5 mt-2 rounded-full border border-hairline bg-white text-sm flex items-center justify-center gap-2" title="Générer une carte de la bouteille à partager (sans le nombre de bouteilles)"><Ic name="trayUp" cls="w-4 h-4" /> {{ partageEnCours ? 'Préparation…' : 'Partager la fiche' }}</button>
 
         <div class="flex gap-2 mt-4">
           <button @click="boire" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm flex items-center justify-center gap-2"><Ic name="glass" cls="w-5 h-5" /> Boire une bouteille</button>

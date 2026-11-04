@@ -8,6 +8,7 @@ import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
+import { lireCodeBarres, chercheProduit } from "../lib/scan.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -42,6 +43,8 @@ const showAdd = ref(false);
 const showFiltres = ref(false);
 const showListes = ref(false);
 const importRows = ref(null);
+const showFichiers = ref(false);
+watch(showFichiers, v => cave.overlay("fichiers", v));
 const fileInput = ref(null);
 const jsonInput = ref(null);
 const addMore = ref(false);
@@ -232,6 +235,46 @@ function appliquePatch(patch) {
   if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs remplis */
 }
 
+/* ---------- Scan code-barres (surtout spiritueux) → pré-remplissage ---------- */
+const scanOn = ref(false);
+const scanMsg = ref("");
+const scanVideo = ref(null);
+let scanStream = null;
+async function demarrerScan() {
+  scanMsg.value = "Ouverture de la caméra…";
+  scanOn.value = true;
+  await nextTick();
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    scanVideo.value.srcObject = scanStream;
+    await scanVideo.value.play();
+    scanMsg.value = "Vise le code-barres de la bouteille";
+    const code = await lireCodeBarres(scanVideo.value);
+    finScan();
+    try {
+      const patch = await chercheProduit(code);
+      if (patch) {
+        appliquePatch(patch);
+        cave.toast("Champs pré-remplis depuis le code-barres — complète ou dicte le reste");
+      } else {
+        cave.toast("Code " + code + " inconnu — remplis la fiche à la main ou dicte");
+      }
+    } catch {
+      cave.toast("Produit introuvable (hors ligne ?) — remplis à la main ou dicte");
+    }
+  } catch {
+    finScan();
+    cave.toast("Caméra indisponible — remplis la fiche à la main ou dicte");
+  }
+}
+function finScan() {
+  scanOn.value = false;
+  scanMsg.value = "";
+  try { scanStream?.getTracks().forEach(t => t.stop()); } catch {}
+  scanStream = null;
+}
+watch(scanOn, v => cave.overlay("scan", v));
+
 function toggleDictee() {
   if (dicteeOn.value) { stopDictee(); return; }
   dicteeBuf = ""; dicteeTexte.value = "";
@@ -385,14 +428,40 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <div class="flex gap-1.5 mt-1.5 overflow-x-auto no-scrollbar pb-0.5">
       <button @click="livreDeCave" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Livre de cave (imprimable)"><Ic name="book" cls="w-3.5 h-3.5" /> Livre</button>
       <button @click="showListes = true" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Listes d'envies et réservations"><Ic name="heart" cls="w-3.5 h-3.5" /> Listes<span v-if="cave.nbReservees" class="ml-0.5 px-1.5 rounded-full bg-gold text-white">{{ cave.nbReservees }}</span></button>
-      <button @click="openImport" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Importer un fichier Excel ou CSV"><Ic name="excel" cls="w-3.5 h-3.5 text-green" /> Importer</button>
-      <button @click="cave.downloadBackup()" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Exporter une sauvegarde CSV (réimportable)"><Ic name="csv" cls="w-3.5 h-3.5 text-green" /> Sauvegarde</button>
+      <button @click="showFichiers = true" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Importer / exporter : Excel, CSV, JSON"><Ic name="trayUp" cls="w-3.5 h-3.5 text-green" /> Fichiers</button>
       <button @click="cave.syncAll()" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Synchroniser avec Notion"><Ic name="cloudUp" cls="w-3.5 h-3.5" /> Sync<span v-if="cave.queueLen()" class="ml-0.5 px-1.5 rounded-full bg-accent text-white">{{ cave.queueLen() }}</span></button>
       <button @click="cave.pullAll()" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Récupérer les données Notion"><Ic name="cloudDown" cls="w-3.5 h-3.5" /> Récupérer</button>
       <button v-if="canInstall" @click="installer" class="shrink-0 px-3 py-1.5 rounded-full bg-accent text-white text-xs flex items-center gap-1.5" title="Installer Ma Cave sur cet appareil"><Ic name="grid" cls="w-3.5 h-3.5" /> Installer l'app</button>
     </div>
     <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden" @change="onImportFile" />
     <input ref="jsonInput" type="file" accept=".json" class="hidden" @change="onJsonFile" />
+
+    <!-- Popin Fichiers : importer / exporter local, dans le thème de l'app -->
+    <div v-if="showFichiers" class="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-6" @click.self="showFichiers = false">
+      <div class="bg-white rounded-xl2 p-5 w-full max-w-xs">
+        <p class="font-serif text-lg">Fichiers &amp; sauvegardes</p>
+        <p class="text-sm text-muted mt-1">Tout se passe sur ton appareil.</p>
+        <div class="space-y-2 mt-4">
+          <button @click="showFichiers = false; openImport()" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
+            <Ic name="excel" cls="w-5 h-5 text-green" />
+            <span><span class="block text-sm font-medium">Importer Excel / CSV</span><span class="block text-[11px] text-muted">Fusion avec la cave actuelle</span></span>
+          </button>
+          <button @click="showFichiers = false; cave.downloadBackup(true)" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
+            <Ic name="trayUp" cls="w-5 h-5 text-green" />
+            <span><span class="block text-sm font-medium">Exporter Excel / CSV</span><span class="block text-[11px] text-muted">Sauvegarde réimportable</span></span>
+          </button>
+          <button @click="showFichiers = false; cave.exportBackupJSON()" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
+            <Ic name="trayUp" cls="w-5 h-5 text-accent" />
+            <span><span class="block text-sm font-medium">Exporter JSON</span><span class="block text-[11px] text-muted">Tout le profil, photos incluses</span></span>
+          </button>
+          <button @click="showFichiers = false; openJson()" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
+            <Ic name="trayDown" cls="w-5 h-5 text-muted" />
+            <span><span class="block text-sm font-medium">Restaurer une sauvegarde JSON</span><span class="block text-[11px] text-muted">Remplace la cave actuelle</span></span>
+          </button>
+        </div>
+        <button @click="showFichiers = false" class="w-full mt-4 py-2.5 rounded-full border border-hairline text-sm">Fermer</button>
+      </div>
+    </div>
 
     <!-- Suggestion du soir : urgence apogée + température de service (v52) -->
     <div v-if="ceSoir && prefsSoir.bandeauSoir !== false" class="mt-3 rounded-xl2 border border-accent/25 bg-accent-soft overflow-hidden">
@@ -512,6 +581,20 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <ProfilSheet :open="showProfil" :on-avatar="onAvatar" @close="showProfil = false" />
     <ImportPreview v-if="importRows" :rows="importRows" @close="importRows = null" />
 
+    <!-- Scan code-barres : caméra plein cadre, code détecté → recherche -->
+    <div v-if="scanOn" class="fixed inset-0 z-[70] bg-ink/80 flex items-center justify-center p-6" @click.self="finScan">
+      <div class="bg-white rounded-xl2 p-5 w-full max-w-xs text-center">
+        <p class="font-serif text-lg mb-1">Scanner la bouteille</p>
+        <p class="text-xs text-muted mb-4">Surtout pour les spiritueux — le code pré-remplit la fiche</p>
+        <div class="relative mx-auto w-56 h-44 rounded-xl2 overflow-hidden bg-cream border border-hairline">
+          <video ref="scanVideo" autoplay muted playsinline class="w-full h-full object-cover"></video>
+          <span class="absolute inset-x-6 top-1/2 h-0.5 bg-accent pointer-events-none"></span>
+        </div>
+        <p class="text-xs text-muted mt-4">{{ scanMsg }}</p>
+        <button @click="finScan" class="mt-4 w-full py-2.5 rounded-full border border-hairline text-sm">Annuler</button>
+      </div>
+    </div>
+
     <!-- Modale d'ajout -->
     <div v-if="showAdd" class="fixed inset-0 z-30 bg-ink/40 flex items-end md:items-center justify-center p-0 md:p-4" @click.self="showAdd = false">
       <div class="bg-white rounded-t-xl2 md:rounded-xl2 w-full max-w-md max-h-[92vh] overflow-y-auto">
@@ -533,6 +616,9 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <div class="mt-3 flex items-center gap-2">
             <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
+            </button>
+            <button type="button" @click="demarrerScan" class="shrink-0 h-9 px-3.5 rounded-full bg-white border border-accent/40 text-accent flex items-center gap-1.5 text-xs" title="Scanner le code-barres de la bouteille (spiritueux surtout) pour pré-remplir la fiche">
+              <Ic name="camera" cls="w-4 h-4" /> Scanner
             </button>
             <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
           </div>

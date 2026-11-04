@@ -847,6 +847,17 @@ export const useCave = defineStore("cave", {
         this.toast(manuel ? "Sauvegarde CSV téléchargée — réimportable via Importer" : "Sauvegarde hebdo CSV téléchargée — réimportable via Importer");
       } catch { this.toast("Sauvegarde impossible : stockage plein ?"); }
     },
+    exportBackupJSON() {
+      /* Sauvegarde JSON complète : tout le profil, photos allégées (taille raisonnable) */
+      const light = JSON.parse(this.backupJSON());
+      light.bouteilles = light.bouteilles.map(b => ({ ...b, photo: b.photo && b.photo.length < 300000 ? b.photo : null }));
+      const d = new Date();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(light)], { type: "application/json" }));
+      a.download = "ma-cave-" + this.PROFIL + "-" + d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + ".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      this.toast("Sauvegarde JSON téléchargée — restaure tout le profil");
+    },
     autoBackup() {
       const key = this.pKeys.db + "-lastbackup";
       const last = +(localStorage.getItem(key) || 0);
