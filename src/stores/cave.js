@@ -350,6 +350,13 @@ export const useCave = defineStore("cave", {
       const h = (this.db.bues || [])[idx];
       if (!h) return;
       this.db.bues.splice(idx, 1);
+      /* L'annulation doit se PROPAGER : sans tombstone ni push, l'entrée annulée
+         ressuscite au prochain pull (elle est restée sur la page Notion bues).
+         Même mécanique que supprimerBue. */
+      const kkUndo = (h.date || "") + "|" + (h.nom || "") + "|" + (h.millesime ?? "");
+      this.db.buesSuppr = this.db.buesSuppr || [];
+      if (!this.db.buesSuppr.includes(kkUndo)) this.db.buesSuppr.push(kkUndo);
+      if (this.db.buesSuppr.length > 300) this.db.buesSuppr = this.db.buesSuppr.slice(-300);
       let b = this.db.bouteilles.find(x =>
         (x.nom || "").toLowerCase().trim() === (h.nom || "").toLowerCase().trim() &&
         (x.millesime ?? null) === (h.millesime ?? null));
@@ -368,6 +375,7 @@ export const useCave = defineStore("cave", {
       this.buesFiche = null;
       this.toast(`${h.nom} remise en cave`);
       this.syncNotion({ action: "add", bouteille: b });
+      this.syncBues();   /* pousse la liste sans l'entrée annulée + les tombstones */
     },
 
     /* Supprimer une entrée de l'historique des bues (definitif) */
