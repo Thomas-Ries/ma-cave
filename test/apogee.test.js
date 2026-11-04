@@ -29,6 +29,10 @@ check("Gewurz VT 2020 (spécificité)", [r.debut, r.fin], [2027, 2044]);
 r = estimeApogee({ nom: "Riesling", cepage: "Riesling", specificite: "Vin de glace", region: "Alsace", categorie: "Moelleux", millesime: 2021 });
 check("Vin de glace 2021 (spécificité)", [r.debut, r.fin], [2030, 2051]);
 
+/* 2d. Blanc moelleux (v36 : catégorie Blanc + spécificité) : alsace blanc 2–8 + liquoreux +5/+17 → 2027–2045 */
+r = estimeApogee({ nom: "Pinot Gris", cepage: "", specificite: "Moelleux / Liquoreux", region: "Alsace", categorie: "Blanc", millesime: 2020 });
+check("Blanc moelleux 2020 (spécificité)", [r.debut, r.fin], [2027, 2045]);
+
 /* 3. Morgon 2021 : appellation 5–12 → 2026–2033 */
 r = estimeApogee({ nom: "Morgon Côte du Py", cepage: "Gamay", region: "Beaujolais", categorie: "Rouge", millesime: 2021 });
 check("Morgon Côte du Py 2021", [r.debut, r.fin], [2026, 2033]);
@@ -94,5 +98,5 @@ check("Crémant NM (sans millésime)", [r.debut, r.fin], [YEAR, YEAR + 2]);
 r = estimeApogee({ nom: "Springbank 10 ans", type: "Spiritueux", categorie: "Spiritueux", millesime: null });
 check("Springbank → null", r, null);
 
-console.log(`\n${pass}/19 réussis${fail ? `, ${fail} échoué(s)` : ""}`);
+console.log(`\n${pass}/20 réussis${fail ? `, ${fail} échoué(s)` : ""}`);
 process.exit(fail ? 1 : 0);

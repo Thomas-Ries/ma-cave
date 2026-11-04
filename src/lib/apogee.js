@@ -118,7 +118,7 @@ const MENTIONS = [
   { mots: ["vendanges tardives", " vt", "late harvest"], bonus: [4, 15], hors: ["bordeaux"] },
   { mots: ["vin de glace", "eiswein", "ice wine"], bonus: [6, 20] },
   { mots: ["vin de paille"], bonus: [5, 15] },
-  { mots: ["liquoreux"], bonus: [3, 10] },
+  { mots: ["liquoreux"], bonus: [5, 17] },
   { mots: ["moelleux de garde", "bonnezeaux", "quarts de chaume", "coteaux du layon", "vouvray moelleux"], bonus: [5, 15] },
   /* Alsace : les Grands Crus sont des vins de tension, 15-30 ans pour le Riesling */
   { mots: ["grand cru"], regions: ["alsace"], bonus: [4, 10] },

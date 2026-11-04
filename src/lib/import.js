@@ -75,6 +75,8 @@ function rowToBottle(row, map) {
     pays: String(get("pays") ?? "").trim(),
   };
   if (!b.categorie) b.categorie = b.type === "Spiritueux" ? "Spiritueux" : "Rouge";
+  /* « Moelleux » n'est plus une catégorie : colonne Excel → Blanc + spécificité */
+  if (b.categorie === "Moelleux") { b.categorie = "Blanc"; if (!b.specificite) b.specificite = "Moelleux / Liquoreux"; }
   if (!b.type) b.type = b.categorie === "Spiritueux" ? "Spiritueux" : "Vin";
   if (!b.statut) b.statut = "En cave";
   return b;

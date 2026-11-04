@@ -177,6 +177,18 @@ export const useCave = defineStore("cave", {
          est ramenée à « Principale » pour que le dédoublonnage v34 les fusionne. */
       db.bouteilles.forEach(b => { if (b.cave !== "Frigo" && b.cave !== "Principale") { b.cave = "Principale"; mig = true; } });
       if (db.filters && db.filters.cave && db.filters.cave !== "Toutes" && db.filters.cave !== "Principale" && db.filters.cave !== "Frigo") { db.filters.cave = "Toutes"; mig = true; }
+      /* v36 : « Moelleux » n'est plus une catégorie (couleur) — les fiches deviennent
+         Blanc + spécificité « Moelleux / Liquoreux ». La clé Nom+Millésime+Cave ne
+         change pas : la sync met à jour les pages Notion existantes, AUCUN doublon.
+         modifLe bumpé → le push vers Notion propagera Categorie=Blanc + Spécificité. */
+      db.bouteilles.forEach(b => {
+        if (b.categorie !== "Moelleux") return;
+        b.categorie = "Blanc";
+        if (!b.specificite) b.specificite = "Moelleux / Liquoreux";
+        b.modifLe = new Date().toISOString();
+        mig = true;
+      });
+      if (db.filters && db.filters.cat === "Moelleux") { db.filters.cat = "Toutes"; mig = true; }
       /* v34 : dédoublonnage — des « Récupérer » ont dupliqué la cave quand la clé
          cave différait (« Cave principale » vs « Principale »). Même clé importKey
          = même bouteille : on garde la plus ancienne et on récupère les champs
@@ -586,7 +598,7 @@ export const useCave = defineStore("cave", {
           const notionT = nb.lastEdited || "";
           const localT = local.modifLe || "";
           if (notionT && (!localT || notionT > localT)) {
-            ["quantite", "prix", "categorie", "region", "pays", "cepage", "cuvee", "appellation", "format", "commentaire", "statut", "millesime"].forEach(f => { if (nb[f] != null && nb[f] !== "") local[f] = nb[f]; });
+            ["quantite", "prix", "categorie", "region", "pays", "cepage", "cuvee", "appellation", "format", "commentaire", "statut", "millesime", "specificite"].forEach(f => { if (nb[f] != null && nb[f] !== "") local[f] = nb[f]; });
             local.modifLe = notionT;
             updated++;
           } else kept++;

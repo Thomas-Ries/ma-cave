@@ -525,12 +525,22 @@ const RAISONS = {
 
 /* ---------- Le moteur : classe les bouteilles de TA cave pour un plat ---------- */
 
+/* Catégorie effective pour les accords : une spécificité sucrée (VT, SGN,
+   vin de glace, paille, moelleux) fait matcher la bouteille comme un moelleux,
+   même si sa catégorie est désormais « Blanc » (v36). */
+function catVin(b) {
+  if (b.type === "Spiritueux") return "Spiritueux";
+  const s = normAcc(b.specificite || "");
+  if (s && /vendanges|grains|glace|paille|moelleux|liquoreux/.test(s)) return "Moelleux";
+  return b.categorie;
+}
+
 function accordsPour(plat, bouteilles, year) {
   const y = year || new Date().getFullYear();
   const out = [];
   for (const b of bouteilles) {
     if (!b || !(b.quantite > 0)) continue;
-    const cat = b.type === "Spiritueux" ? "Spiritueux" : b.categorie;
+    const cat = catVin(b);
     const cep = normAcc(b.cepage);
     const reg = normAcc(b.region);
     let score = 0;
@@ -571,7 +581,7 @@ function accordsPour(plat, bouteilles, year) {
 function platsPourBouteille(b, year) {
   const y = year || new Date().getFullYear();
   if (!b) return [];
-  const cat = b.type === "Spiritueux" ? "Spiritueux" : b.categorie;
+  const cat = catVin(b);
   const cep = normAcc(b.cepage);
   const reg = normAcc(b.region);
   const out = [];

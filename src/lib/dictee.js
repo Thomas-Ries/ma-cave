@@ -56,7 +56,7 @@ const BORNE = /\b(?:nom|domaine|ch[âa]teau|cat[ée]gorie|mill[ée]sime|ann[ée]
 const CATS_MAP = [
   [/(?:vin\s+)?rouge/i, "Rouge"], [/(?:vin\s+)?blanc/i, "Blanc"], [/(?:vin\s+)?ros[ée]/i, "Rosé"],
   [/champagne/i, "Champagne"], [/cr[ée]mant/i, "Crémant"], [/effervescent|mousseux/i, "Effervescent"],
-  [/moelleux|liquoreux/i, "Moelleux"], [/spiritueux|whisky|rhum|gin|vodka|cognac/i, "Spiritueux"],
+  [/moelleux|liquoreux/i, "Blanc"], [/spiritueux|whisky|rhum|gin|vodka|cognac/i, "Spiritueux"],
 ];
 
 /* ---------- Formats ---------- */
@@ -137,7 +137,7 @@ function raffineNom(v, patch) {
       const anneeAvant = patch.millesime != null || /\b(19|20)\d{2}\b/.test(avant) || /\bdeux\s+mille/i.test(avant);
       if (avant && (anneeAvant || apres)) {
         const hit = CATS_MAP.find(([re]) => re.test(ce[1]));
-        if (hit) { patch.categorie = hit[1]; reste = avant + " " + apres; }
+        if (hit) { patch.categorie = hit[1]; if (/moelleux|liquoreux/i.test(ce[1])) patch.specificite = "Moelleux / Liquoreux"; reste = avant + " " + apres; }
       }
     }
   }
@@ -149,7 +149,7 @@ function raffineNom(v, patch) {
 function applique(f, v, patch) {
   switch (f) {
     case "nom": if (v.length > 1) raffineNom(v.replace(/^(?:vin|cuvée)\s+/i, ""), patch); break;
-    case "categorie": { const hit = CATS_MAP.find(([re]) => re.test(v)); if (hit) patch.categorie = hit[1]; break; }
+    case "categorie": { const hit = CATS_MAP.find(([re]) => re.test(v)); if (hit) { patch.categorie = hit[1]; if (/moelleux|liquoreux/i.test(v)) patch.specificite = "Moelleux / Liquoreux"; } break; }
     case "millesime": { const n = nbFr(v); if (n != null && n >= 1900 && n <= 2100) patch.millesime = Math.round(n); break; }
     case "quantite": { const n = nbFr(v.replace(/bouteilles?/gi, "")); if (n != null && n >= 1 && n <= 999) patch.quantite = Math.round(n); break; }
     case "prix": { const n = nbFr(v.replace(/euros?/gi, "").trim()); if (n != null && n >= 0 && n <= 100000) patch.prix = n; break; }

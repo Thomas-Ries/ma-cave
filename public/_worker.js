@@ -43,6 +43,7 @@ function toNotionProperties(b) {
     "Cépage": { rich_text: [{ text: { content: b.cepage || "" } }] },
     "Appellation": { rich_text: [{ text: { content: b.appellation || "" } }] },
     "Cuvée": { rich_text: [{ text: { content: b.cuvee || "" } }] },
+    "Spécificité": { rich_text: [{ text: { content: b.specificite || "" } }] },
     "Format": { select: { name: b.format || "Bouteille (75 cl)" } },
     "Commentaire": { rich_text: [{ text: { content: b.commentaire || "" } }] },
   };
@@ -78,6 +79,7 @@ function fromNotionPage(p) {
     cepage: rt("Cépage"),
     appellation: rt("Appellation"),
     cuvee: rt("Cuvée"),
+    specificite: rt("Spécificité"),
     format: sel("Format") || "Bouteille (75 cl)",
     commentaire: rt("Commentaire"),
     lastEdited: p.last_edited_time || "",
