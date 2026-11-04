@@ -2,7 +2,7 @@
 <script setup>
 import { computed } from "vue";
 const props = defineProps({ cat: { type: String, default: "Rouge" }, size: { type: Number, default: 34 } });
-const COLORS = { Rouge: "#7A2E3E", Blanc: "#A8842C", "Rosé": "#D98A96", "Champagne": "#C4A35A", "Crémant": "#8FBF9F", Effervescent: "#4A7856", Moelleux: "#C48B3F", Spiritueux: "#8A5A2B" };
+const COLORS = { Rouge: "#7A2E3E", Blanc: "#A8842C", "Rosé": "#D98A96", "Champagne": "#C4A35A", "Crémant": "#8FBF9F", Effervescent: "#4A7856", Moelleux: "#C48B3F", Spiritueux: "#7A8B2E" };
 const color = computed(() => COLORS[props.cat] || "#7A2E3E");
 </script>
 <template>
