@@ -4,7 +4,7 @@ import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
 import { platsPourBouteille } from "../lib/accords.js";
-import { partagerBouteille } from "../lib/partage.js";
+import { partagerBouteille, lienPartage } from "../lib/partage.js";
 import { splitNom, cepageCourt, photoFromFile, accTxt } from "../util.js";
 import { CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
 import Ic from "./Ic.vue";
@@ -180,6 +180,19 @@ async function partager() {
   partageEnCours.value = false;
 }
 
+/* Lien public : la fiche voyage DANS l'URL (base64url), rendue par partage.html.
+   Jamais de prix/quantité/commentaire/photo — juste l'essentiel à montrer. */
+async function partagerLien() {
+  if (!b.value) return;
+  const url = lienPartage(b.value);
+  const titre = b.value.nom || "Ma Cave";
+  if (navigator.share) {
+    try { await navigator.share({ title: titre, text: "La bouteille qu'on boit samedi :", url }); return; } catch { return; }
+  }
+  try { await navigator.clipboard.writeText(url); cave.toast("Lien copié — colle-le où tu veux"); }
+  catch { cave.toast("Copie impossible — garde la carte PNG pour l'instant"); }
+}
+
 /* Légende d'échelle de notation (70–100, comme le carnet de dégustation) */
 const leg = computed(() => notePalier(noteVal.value));
 
@@ -262,6 +275,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
 
         <button @click="acc = true" class="w-full py-2.5 mt-4 rounded-full bg-riesling/40 border border-riesling text-sm flex items-center justify-center gap-2" title="Les plats qui vont avec cette bouteille"><Ic name="sparkles" cls="w-5 h-5" /> Avec quoi la boire ?</button>
         <button @click="partager" :disabled="partageEnCours" class="w-full py-2.5 mt-2 rounded-full border border-hairline bg-white text-sm flex items-center justify-center gap-2" title="Générer une carte de la bouteille à partager (sans le nombre de bouteilles)"><Ic name="trayUp" cls="w-4 h-4" /> {{ partageEnCours ? 'Préparation…' : 'Partager la fiche' }}</button>
+        <button @click="partagerLien" class="w-full py-2.5 mt-2 rounded-full border border-hairline bg-white text-sm flex items-center justify-center gap-2" title="Copier un lien web public de cette bouteille (nom, millésime, apogée — jamais le prix ni le nombre)"><Ic name="note" cls="w-4 h-4" /> Lien de la bouteille</button>
 
         <div class="flex gap-2 mt-4">
           <button @click="boire" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm flex items-center justify-center gap-2"><Ic name="glass" cls="w-5 h-5" /> Boire une bouteille</button>

@@ -151,3 +151,21 @@ export async function partagerBouteille(b, accords) {
   a.remove();
   return "telecharge";
 }
+
+/* ===== Lien public de partage (idée « la bouteille qu'on boit samedi ») =====
+   Le lien EMBARQUE la fiche (nom, cuvée, millésime, appellation, région, catégorie,
+   mention, note, fenêtre d'apogée) encodée en base64url après le # de l'URL.
+   → page statique public/partage.html qui décode et rend la carte.
+   → aucune donnée privée (jamais prix, quantité, commentaire, photo, emplacement)
+     ne quitte l'app : tout est dans le lien, rien n'est stocké ni interrogé.
+   → pas révocable, mais périmé sans suite : la fiche est figée au moment du partage. */
+export function lienPartage(b) {
+  const o = {
+    n: b.nom || "", c: b.cuvee || "", m: b.millesime ?? null,
+    cat: b.categorie || "Rouge", a: b.appellation || "", r: b.region || "",
+    ce: b.cepage || "", s: b.specificite || "", note: b.note ?? null,
+    ap: { d: b.apoDebut ?? b.apoAuto?.debut ?? null, f: b.apoFin ?? (b.apoDebut != null ? b.apoDebut : b.apoAuto?.fin) ?? null },
+  };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return new URL("partage.html#" + b64, location.origin).href;
+}
