@@ -1,6 +1,6 @@
 <script setup>
 /* Cave : liste, recherche, filtres, mode dense avec en-têtes collants par région */
-import { ref, computed, watch, inject, onMounted } from "vue";
+import { ref, computed, watch, inject, onMounted, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
