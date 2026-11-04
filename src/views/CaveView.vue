@@ -558,7 +558,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
             <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
-            <label class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs cursor-pointer" :class="ocrEnCours ? 'bg-accent text-white pointer-events-none' : 'bg-white border border-accent/40 text-accent'" :title="ocrEnCours ? 'Lecture de l'étiquette…' : 'Photographier l'étiquette pour remplir la fiche'">
+            <label class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs cursor-pointer" :class="ocrEnCours ? 'bg-accent text-white pointer-events-none' : 'bg-white border border-accent/40 text-accent'" :title="ocrEnCours ? 'Lecture de l’étiquette…' : 'Photographier l’étiquette pour remplir la fiche'">
               <Ic name="camera" cls="w-4 h-4" /> {{ ocrEnCours ? 'Lecture…' : 'Photo' }}
               <input type="file" accept="image/*" capture="environment" class="hidden" :disabled="ocrEnCours" @change="onPhotoOcr" />
             </label>
