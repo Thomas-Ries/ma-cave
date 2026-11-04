@@ -39,11 +39,15 @@ onMounted(async () => {
      sinon choix du profil (on ne propose jamais de QR code ni clé d'accès) */
   const inscrits = Object.values(cave.PROFILS).some(p => cleDe(p.id));
   phase.value = inscrits && (await biomometriePrete()) ? "face" : "qui";
+  /* Face ID se lance tout seul dès l'arrivée sur l'écran ; si le navigateur
+     exige un geste utilisateur, le bouton prendra le relais (bioManuel) */
+  if (phase.value === "face") setTimeout(() => deverrouillerBio(true), 250);
 });
 
 /* ---------- Déverrouillage biométrique (Face ID / empreinte) ---------- */
 const bioErr = ref(false);
-async function deverrouillerBio() {
+const bioManuel = ref(false);   /* true si le navigateur exige un tap (rare) */
+async function deverrouillerBio(auto = false) {
   const ids = Object.values(cave.PROFILS).map(p => p.id);
   try {
     const id = await verifierBiometrie(ids);
@@ -54,9 +58,14 @@ async function deverrouillerBio() {
     } else {
       bioErr.value = true;
     }
-  } catch {
-    /* annulé par l'utilisateur ou prompt indisponible → retour au choix */
-    phase.value = "qui";
+  } catch (e) {
+    if (e?.bioIncompatible) { phase.value = "qui"; return; }
+    /* annulé (NotAllowedError) ou geste requis : si le prompt auto n'a pas pu
+       être montré, on affiche le bouton ; une annulation de prompt revient
+       ici aussi → on reste sur l'écran, le lien « Choisir mon profil » est là */
+    if (auto && e?.name === "NotAllowedError") bioManuel.value = true;
+    else if (e?.name === "NotAllowedError") { /* tap puis annulé : on reste */ }
+    else phase.value = "qui";
   }
 }
 
@@ -163,8 +172,9 @@ function onAvatar(ev) {
   <div v-else-if="phase === 'face'" class="fixed inset-0 z-[997] bg-cream flex flex-col items-center justify-center px-8">
     <div class="w-16 h-16 rounded-full bg-accent text-white flex items-center justify-center mb-4 shadow-md"><Ic name="user" cls="w-8 h-8" /></div>
     <h2 class="font-serif text-2xl mb-1">Ma Cave</h2>
-    <p class="text-xs text-muted mb-8">{{ bioErr ? "Pas de correspondance — retente ou choisis ton profil" : "Déverrouille ta cave d'un regard" }}</p>
-    <button @click="deverrouillerBio" class="w-full max-w-xs py-3 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center gap-2"><Ic name="user" cls="w-4 h-4" /> Face ID / Empreinte</button>
+    <p class="text-xs text-muted mb-8">{{ bioErr ? "Pas de correspondance — retente ou choisis ton profil" : (bioManuel ? "Déverrouille ta cave d'un regard" : "Vérification Face ID…") }}</p>
+    <button v-if="bioManuel || bioErr" @click="deverrouillerBio()" class="w-full max-w-xs py-3 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center gap-2"><Ic name="user" cls="w-4 h-4" /> Face ID / Empreinte</button>
+    <div v-else class="w-full max-w-xs flex items-center justify-center gap-2 text-muted text-sm"><span class="sync-spin inline-block w-4 h-4 rounded-full border-2 border-riesling border-t-accent"></span> Recherche ton visage…</div>
     <button @click="phase = 'qui'" class="mt-5 text-xs text-muted underline underline-offset-2">Choisir mon profil</button>
   </div>
 

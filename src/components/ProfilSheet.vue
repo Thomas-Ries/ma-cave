@@ -233,8 +233,10 @@ function confirmDisable() {
       </div>
 
       <!-- Déverrouillage biométrique -->
-      <p class="text-[10px] text-muted uppercase tracking-widest mb-2 mt-5">Face ID / Empreinte</p>
-      <div class="bg-white border border-hairline rounded-xl2 p-4">
+      <p class="text-[10px] text-muted uppercase tracking-widest mb-2 mt-5 flex items-center justify-between">Face ID / Empreinte
+        <span v-if="aBio" class="px-2 py-0.5 rounded-full bg-accent-soft text-accent text-[10px] tracking-normal font-medium normal-case flex items-center gap-1"><Ic name="lock" cls="w-3 h-3" /> Activé</span>
+      </p>
+      <div class="bg-white rounded-xl2 p-4" :class="aBio ? 'border border-accent/50' : 'border border-hairline'">
         <div class="flex items-center gap-2 text-sm">
           <Ic name="user" cls="w-4 h-4" :class="aBio ? 'text-accent' : 'text-muted'" />
           <span v-if="aBio">Ta cave s'ouvre par {{ bioNom() }} au démarrage</span>
@@ -247,7 +249,7 @@ function confirmDisable() {
         <div v-if="bioDispo" class="flex gap-2 mt-3">
           <button v-if="!aBio" @click="activerBio" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Activer {{ bioNom() }}</button>
           <template v-else>
-            <button @click="testerBio" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Tester</button>
+            <button @click="testerBio" class="flex-1 py-2.5 rounded-full border border-accent/40 text-accent text-sm">Tester</button>
             <button @click="activerBio" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Refaire</button>
             <button @click="confirmBioOff" class="flex-1 py-2.5 rounded-full border border-hairline text-sm text-muted">Supprimer</button>
           </template>
@@ -292,7 +294,7 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.61</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.62</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
