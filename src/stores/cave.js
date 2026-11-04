@@ -59,8 +59,10 @@ export const useCave = defineStore("cave", {
       return [...s];
     },
 
-    /* Un spiritueux : type marqué OU catégorie Spiritueux (sécurité import/données anciennes) */
-    estSpiritueux(b) { return b.type === "Spiritueux" || b.categorie === "Spiritueux"; },
+    /* Un spiritueux : type marqué OU catégorie Spiritueux (sécurité import/données anciennes).
+       Getter currifié (param → sous-fonction) : un getter Pinia à argument direct
+       serait évalué UNE fois comme un computed avec b=undefined, pas comme une fonction. */
+    estSpiritueux: () => (b) => !!(b && (b.type === "Spiritueux" || b.categorie === "Spiritueux")),
 
     /* Compteurs par étage (références en stock) — pour les pastilles du sélecteur */
     etageCounts() {
