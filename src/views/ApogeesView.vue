@@ -1,6 +1,6 @@
 <script setup>
 /* Apogées : à boire / bientôt / passé — avec rappel d'injecter openFiche */
-import { computed, inject } from "vue";
+import { computed, inject, ref } from "vue";
 import { useCave } from "../stores/cave.js";
 import { splitNom, cepageCourt } from "../util.js";
 import Ic from "../components/Ic.vue";
@@ -9,6 +9,11 @@ const cave = useCave();
 const openFiche = inject("openFiche");
 const year = new Date().getFullYear();
 
+/* Filtre des cartes du haut : null = liste complète ; re-clic = retour au complet.
+   (≠ apoAlerte, qui ne pilote QUE les notifications.) */
+const apoFiltre = ref(null);
+function setFiltre(id) { apoFiltre.value = apoFiltre.value === id ? null : id; }
+
 /* Code couleur repos : riesling (à boire) → or (bientôt) → bordeaux (passées), plus soutenu quand actif */
 const FILTRES = [
   { id: "boire", t: "À boire", d: "En apogée cette année", cls: "bg-riesling/30 border-riesling", num: "text-riesling-ink", repos: "bg-riesling/15 border-riesling/50" },
@@ -16,12 +21,23 @@ const FILTRES = [
   { id: "passe", t: "Passées", d: "À boire sans attendre", cls: "bg-accent border-accent text-white", num: "text-accent", repos: "bg-accent-soft border-accent/30" }
 ];
 
-const items = computed(() => cave.apoItems);
-const badge = (it) => {
+const items = computed(() => {
+  if (!apoFiltre.value) return cave.apoItems;
+  return cave.apoItems.filter(it => statut(it) === apoFiltre.value);
+});
+/* Statut d'une bouteille : passe / boire / bientot / garder — même logique que le badge */
+function statut(it) {
   const d = it.est.debut, f = it.est.fin ?? d;
-  if (year > f) return { t: "à boire sans attendre", c: "text-white bg-accent" };
-  if (year >= d) return { t: "en apogée", c: "text-ink bg-riesling" };
-  if (d - year <= 2) return { t: "bientôt prête", c: "text-gold bg-gold/10" };
+  if (year > f) return "passe";
+  if (year >= d) return "boire";
+  if (d - year <= 2) return "bientot";
+  return "garder";
+}
+const badge = (it) => {
+  const s = statut(it);
+  if (s === "passe") return { t: "à boire sans attendre", c: "text-white bg-accent" };
+  if (s === "boire") return { t: "en apogée", c: "text-ink bg-riesling" };
+  if (s === "bientot") return { t: "bientôt prête", c: "text-gold bg-gold/10" };
   return { t: "à garder", c: "text-muted bg-cream" };
 };
 </script>
@@ -40,7 +56,7 @@ const badge = (it) => {
     </div>
 
     <div class="grid grid-cols-3 gap-2 mt-4">
-      <button v-for="f in FILTRES" :key="f.id" @click="cave.apoAlerte = cave.apoAlerte === f.id ? null : f.id" class="p-3 rounded-xl2 border text-left transition" :class="cave.apoAlerte === f.id ? f.cls + ' shadow-sm' : f.repos">
+      <button v-for="f in FILTRES" :key="f.id" @click="setFiltre(f.id)" class="p-3 rounded-xl2 border text-left transition" :class="apoFiltre === f.id ? f.cls + ' shadow-sm' : f.repos">
         <p class="text-sm font-medium">{{ f.t }}</p>
         <p class="text-[11px] text-muted mt-0.5">{{ f.d }}</p>
         <p class="font-serif text-xl mt-1 tabular-nums" :class="f.num">{{ cave.apogeeStats[f.id] }}</p>
@@ -57,6 +73,8 @@ const badge = (it) => {
         <span class="text-[10px] px-1.5 py-0.5 rounded-full shrink-0" :class="badge(it).c">{{ badge(it).t }}</span>
       </button>
     </div>
-    <p v-else class="text-sm text-muted text-center py-10">Aucune bouteille dans ce filtre.</p>
+    <p v-if="apoFiltre && !items.length" class="text-sm text-muted text-center py-10">Aucune bouteille dans ce filtre — re-tape la carte pour tout revoir.</p>
+    <p v-else-if="!items.length" class="text-sm text-muted text-center py-10">Aucune bouteille avec une fenêtre d'apogée.</p>
+    <p v-if="apoFiltre" class="text-[11px] text-muted text-center mt-3">Filtre actif : {{ FILTRES.find(x => x.id === apoFiltre).t.toLowerCase() }} — re-tape la carte pour revenir à la liste complète</p>
   </section>
 </template>
