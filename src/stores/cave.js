@@ -850,6 +850,7 @@ export const useCave = defineStore("cave", {
     exportBackupJSON() {
       /* Sauvegarde JSON complète : tout le profil, photos allégées (taille raisonnable) */
       const light = JSON.parse(this.backupJSON());
+      light.avatar = this.avatarDe(this.PROFIL) || null;   /* la photo de profil est dans le backup */
       light.bouteilles = light.bouteilles.map(b => ({ ...b, photo: b.photo && b.photo.length < 300000 ? b.photo : null }));
       const d = new Date();
       const a = document.createElement("a");
@@ -889,6 +890,7 @@ export const useCave = defineStore("cave", {
         this.db.envies = this.db.envies || [];
         for (const ne of obj.envies) if (ne && ne.id && !this.db.envies.some(e => e.id === ne.id)) this.db.envies.push({ ...ne, items: ne.items || [] });
       }
+      if (obj.avatar) { try { this.setAvatar(obj.avatar); this.syncAvatar(); } catch {} }
       this.save();
       return { ajoutes, maj };
     },

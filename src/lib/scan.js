@@ -1,31 +1,58 @@
 /* Scan de code-barres (EAN) : utile surtout pour les spiritueux, rare sur les
-   bouteilles de vin en France. La caméra lit le code via BarcodeDetector
-   (natif, Chrome Android) ou zxing en repli (iOS Safari), puis OpenFoodFacts
-   (gratuit, sans clé, aucune donnée envoyée SAUF le code recherché) pré-remplit
-   les champs. On complète à la main ou à la dictée ensuite. */
+   bouteilles de vin en France. Deux chemins caméra distincts :
+   - BarcodeDetector natif (Chrome Android) : l'appelant ouvre le flux lui-même ;
+   - zxing en repli (iOS Safari) : zxing ouvre ET gère sa propre caméra —
+     NE PAS ouvrir un getUserMedia avant (deux flux en même temps → iOS gèle).
+   Puis OpenFoodFacts (gratuit, sans clé) pré-remplit les champs. */
 
-/* ---------- Lecture caméra : renvoie le code dès qu'il est lu ---------- */
-export async function lireCodeBarres(video) {
-  if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-    const det = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
-    return new Promise(res => {
-      const boucle = async () => {
-        try {
-          const codes = await det.detect(video);
-          if (codes.length) { res(codes[0].rawValue); return; }
-        } catch {}
-        setTimeout(boucle, 350);
-      };
-      boucle();
-    });
-  }
-  /* Repli : zxing (dynamique, chunk séparé) */
+export function barcodeDetectorDispo() {
+  return typeof window !== "undefined" && "BarcodeDetector" in window;
+}
+
+/* getUserMedia avec garde-fou : sur iPhone en PWA, la promesse peut rester
+   pendante (bug WebKit connu) — on ne reste jamais bloqué sur « Ouverture ». */
+export function ouvrirCamera(video, delaiMs = 9000) {
+  return new Promise((res, rej) => {
+    if (!navigator.mediaDevices?.getUserMedia) return rej(new Error("inaccessible"));
+    let fini = false;
+    const t = setTimeout(() => { if (!fini) { fini = true; rej(new Error("delai")); } }, delaiMs);
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false })
+      .then(stream => {
+        if (fini) { try { stream.getTracks().forEach(x => x.stop()); } catch {} return; } /* trop tard */
+        fini = true; clearTimeout(t);
+        video.srcObject = stream;
+        video.play().catch(() => {});
+        res(stream);
+      }, e => { if (!fini) { fini = true; clearTimeout(t); rej(e); } });
+  });
+}
+
+/* Chemin 1 — BarcodeDetector natif (le flux est déjà ouvert par l'appelant) */
+export function lireAvecDetecteur(video) {
+  const det = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
+  return new Promise(res => {
+    const boucle = async () => {
+      try {
+        const codes = await det.detect(video);
+        if (codes && codes.length) { res(codes[0].rawValue); return; }
+      } catch {}
+      setTimeout(boucle, 350);
+    };
+    boucle();
+  });
+}
+
+/* Chemin 2 — zxing : il ouvre la caméra lui-même. onStop permet à l'appelant
+   d'arrêter (bouton Annuler) ; le flux est arrêté par reader.reset(). */
+export async function lireAvecZxing(video, onStop) {
   const { BrowserMultiFormatReader } = await import("@zxing/browser");
   const reader = new BrowserMultiFormatReader(undefined, { delayBetweenScanAttempts: 250 });
+  const stop = () => { try { reader.reset(); } catch {} };
+  onStop(stop);
   return new Promise((res, rej) => {
     try {
-      reader.decodeFromVideoDevice(undefined, video, (r, err) => {
-        if (r) { try { reader.reset(); } catch {} res(r.getText()); }
+      reader.decodeFromVideoDevice(undefined, video, (r) => {
+        if (r) { stop(); res(r.getText()); }
       });
     } catch (e) { rej(e); }
   });
@@ -47,7 +74,7 @@ export async function chercheProduit(code) {
   const p = j && j.product;
   if (!p) return null;
 
-  const cats = [p.categories, ...(p.categories_tags || []), p.categories_lc === "" ? "" : ""].join(" ");
+  const cats = [p.categories, ...(p.categories_tags || [])].join(" ");
   let nom = String(p.product_name || "").trim();
   if (!nom && p.brands) nom = String(p.brands).split(",")[0].trim();
   if (!nom && p.generic_name) nom = String(p.generic_name).trim();

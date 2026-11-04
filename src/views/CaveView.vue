@@ -8,7 +8,7 @@ import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
-import { lireCodeBarres, chercheProduit } from "../lib/scan.js";
+import { ouvrirCamera, lireAvecDetecteur, lireAvecZxing, barcodeDetectorDispo, chercheProduit } from "../lib/scan.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -239,17 +239,24 @@ function appliquePatch(patch) {
 const scanOn = ref(false);
 const scanMsg = ref("");
 const scanVideo = ref(null);
-let scanStream = null;
+let scanStream = null, scanStop = null;
 async function demarrerScan() {
   scanMsg.value = "Ouverture de la caméra…";
   scanOn.value = true;
   await nextTick();
   try {
-    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
-    scanVideo.value.srcObject = scanStream;
-    await scanVideo.value.play();
+    if (barcodeDetectorDispo()) {
+      /* chemin natif : on ouvre le flux nous-mêmes (garde-fou 9 s) */
+      scanStream = await ouvrirCamera(scanVideo.value);
+      scanStop = () => { try { scanStream?.getTracks().forEach(t => t.stop()); } catch {} };
+    } else {
+      /* chemin zxing : c'est LUI qui ouvre la caméra (deux flux = iOS figé) */
+      scanStop = () => {};
+    }
     scanMsg.value = "Vise le code-barres de la bouteille";
-    const code = await lireCodeBarres(scanVideo.value);
+    const code = barcodeDetectorDispo()
+      ? await lireAvecDetecteur(scanVideo.value)
+      : await lireAvecZxing(scanVideo.value, stop => { scanStop = stop; });
     finScan();
     try {
       const patch = await chercheProduit(code);
@@ -262,14 +269,19 @@ async function demarrerScan() {
     } catch {
       cave.toast("Produit introuvable (hors ligne ?) — remplis à la main ou dicte");
     }
-  } catch {
+  } catch (e) {
     finScan();
-    cave.toast("Caméra indisponible — remplis la fiche à la main ou dicte");
+    if (e?.name === "NotAllowedError") cave.toast("Accès caméra refusé — autorise Ma Cave dans les Réglages de l'appareil");
+    else if (e?.message === "delai") cave.toast("Caméra lente à répondre — réessaie, ou vérifie l'autorisation");
+    else if (e?.message === "inaccessible") cave.toast("Caméra inaccessible — cet appareil ou navigateur ne la propose pas");
+    else cave.toast("Caméra indisponible — remplis la fiche à la main ou dicte");
   }
 }
 function finScan() {
   scanOn.value = false;
   scanMsg.value = "";
+  try { scanStop?.(); } catch {}
+  scanStop = null;
   try { scanStream?.getTracks().forEach(t => t.stop()); } catch {}
   scanStream = null;
 }
@@ -440,7 +452,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <div v-if="showFichiers" class="fixed inset-0 z-50 bg-ink/40 flex items-center justify-center p-6" @click.self="showFichiers = false">
       <div class="bg-white rounded-xl2 p-5 w-full max-w-xs">
         <p class="font-serif text-lg">Fichiers &amp; sauvegardes</p>
-        <p class="text-sm text-muted mt-1">Tout se passe sur ton appareil.</p>
+        <p class="text-sm text-muted mt-1">Import et export locaux — rien ne quitte ton appareil.</p>
         <div class="space-y-2 mt-4">
           <button @click="showFichiers = false; openImport()" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
             <Ic name="excel" cls="w-5 h-5 text-green" />
@@ -452,7 +464,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           </button>
           <button @click="showFichiers = false; cave.exportBackupJSON()" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
             <Ic name="trayUp" cls="w-5 h-5 text-accent" />
-            <span><span class="block text-sm font-medium">Exporter JSON</span><span class="block text-[11px] text-muted">Tout le profil, photos incluses</span></span>
+            <span><span class="block text-sm font-medium">Exporter JSON</span><span class="block text-[11px] text-muted">Toute la cave du profil (bouteilles, bues, listes, envies) + photos</span></span>
           </button>
           <button @click="showFichiers = false; openJson()" class="w-full p-3 rounded-xl2 border border-hairline text-left flex items-center gap-3">
             <Ic name="trayDown" cls="w-5 h-5 text-muted" />
