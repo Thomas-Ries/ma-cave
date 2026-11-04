@@ -41,6 +41,16 @@ eq(
 );
 eq(parseEtiquette(""), {}, "texte vide");
 eq(parseEtiquette("75 cl\nwww.test.fr"), {}, "que du bruit → rien");
+eq(
+  parseEtiquette("Lettre Dés\n\"Vayolette\" Juliénas\n2023\nDomaine David Beaupère\nAppellation Juliénas Contrôlée\nMis en bouteille au domaine"),
+  { nom: "Domaine David Beaupère", millesime: 2023, appellation: "Juliénas" },
+  "cas réel Juliénas : « Lettre Dés » ignoré, le domaine gagne"
+);
+eq(
+  parseEtiquette("Lettre Dés\n\"Vayolette\" Juliénas\n2023\nAppellation Juliénas Contrôlée"),
+  { nom: "\"Vayolette\" Juliénas", millesime: 2023, appellation: "Juliénas" },
+  "sans ligne Domaine : la cuvée quotée gagne malgré la ligne parasite"
+);
 
 console.log(`\n${ok + ko} cas — ${ok} réussis${ko ? ", " + ko + " ÉCHecs" : ""}`);
 process.exit(ko ? 1 : 0);

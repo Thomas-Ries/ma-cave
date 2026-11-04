@@ -22,7 +22,7 @@ const PARTICULES = new Set(["de", "du", "des", "la", "le", "les", "à", "en", "a
 function title(s) {
   /* casse française : les particules restent basses (« Mas de Daumas ») */
   return s.toLowerCase().split(/([\s'’-]+)/).map((tok, i) =>
-    i > 0 && PARTICULES.has(tok) ? tok : tok.replace(/^[a-zà-ÿ]/, c => c.toUpperCase())
+    i > 0 && PARTICULES.has(tok) ? tok : tok.replace(/[a-zà-ÿ]/, c => c.toUpperCase())
   ).join("");
 }
 
@@ -62,14 +62,39 @@ export function parseEtiquette(texte) {
     if (re.test(t)) { patch.cepage = title(c); break; }
   }
 
-  /* Nom / domaine : première ligne significative (hors bruit, préfixes enlevés) */
+  /* Mots courants qui n'ont rien à faire dans un nom de domaine — l'OCR les
+   invente parfois en essayant de lire une calligraphie décorative. */
+const COMMUNS = /^(?:lettre|lettres|image|dessin|photo|logo|livret|livre|cave|garde|présent|present|années?|année|cuve|vin de table)\b/i;
+
+/* Score d'une ligne candidate au titre de « nom » : Domaine/Château devant,
+   cuvée entre guillemets, millésime, majuscule initiale… ; bruit courant pénalisé */
+function scoreLigne(l) {
+  let s = 0;
+  if (/domaine|ch[âa]teau|clos\b|mas\b/i.test(l)) s += 3;
+  if (/^["«'’]/.test(l)) s += 2;                              /* cuvée quotée */
+  if (/\b(?:19[5-9]\d|20[0-4]\d)\b/.test(l)) s += 1;
+  if (/^[A-ZÀ-Ý]/.test(l)) s += 1;
+  if (l.split(/\s+/).filter(Boolean).length >= 2) s += 1;
+  if (l.length > 40) s -= 1;
+  if (COMMUNS.test(l)) s -= 5;
+  if (/whisky|whiskey|scotch|malt|islay|vintage|single|grand cru|cru class|brut|r[ée]serve/i.test(l)) s -= 3;
+  return s;
+}
+
+/* Nom / domaine : la meilleure ligne significative (hors bruit, préfixes enlevés).
+   On ne prend plus « la première venue » : une ligne parasite lue sur une
+   calligraphie décorative (« Lettre Dés ») ne doit pas battre la vraie. */
+{
+  let meilleur = null, meilleurScore = -99;
   for (const l of lignes) {
     if (BRUIT.test(l)) continue;
-    let nom = l.replace(/^(?:grand vin de(?: la|s)?|vin de|domaines?\s+de la)\s+/i, "").trim();
-    if (nom.length >= 3) { patch.nom = title(nom); break; }
+    const nom = l.replace(/^(?:grand vin de(?: la|s)?|vin de|domaines?\s+de la)\s+/i, "").trim();
+    if (nom.length < 3) continue;
+    const s = scoreLigne(nom);
+    if (s > meilleurScore) { meilleur = nom; meilleurScore = s; }
   }
-  /* Fallback : aucune ligne propre → on prend quand même la 1re ligne courte */
-  if (!patch.nom && lignes[0] && lignes[0].length <= 40 && !BRUIT.test(lignes[0])) patch.nom = title(lignes[0]);
+  if (meilleur) patch.nom = title(meilleur);
+}
 
   return patch;
 }
@@ -81,7 +106,8 @@ export async function reconnaitEtiquette(dataUrl) {
   const worker = await createWorker("fra");
   try {
     const { data } = await worker.recognize(dataUrl);
-    return parseEtiquette(data.text || "");
+    const brut = (data.text || "").trim();
+    return { patch: parseEtiquette(brut), brut };
   } finally {
     try { await worker.terminate(); } catch {}
   }

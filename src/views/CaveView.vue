@@ -243,11 +243,14 @@ function onPhotoOcr(ev) {
   photoFromFile(f, async data => {
     n.value.photo = data;   /* l'étiquette devient la photo de la fiche */
     try {
-      const patch = await reconnaitEtiquette(data);
+      const { patch, brut } = await reconnaitEtiquette(data);
       const nb = Object.keys(patch).length;
+      console.log("[OCR]", brut);
       if (nb) {
         appliquePatch(patch);
         cave.toast(`${nb} champ${nb > 1 ? "s" : ""} reconnu${nb > 1 ? "s" : ""} sur l'étiquette — dicte pour corriger ou compléter`);
+      } else if (brut) {
+        cave.toast(`Lu sur l'étiquette : « ${brut.replace(/\s+/g, " ").slice(0, 60)}… » — dicte pour corriger`);
       } else cave.toast("Étiquette illisible — dicte les champs à la voix");
     } catch {
       cave.toast("Reconnaissance indisponible (en ligne ?) — dicte à la voix");
