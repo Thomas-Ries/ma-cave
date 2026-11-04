@@ -4,7 +4,7 @@
 import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { chercheVille, villeDepuis } from "../lib/soir.js";
-import { inscrireBiometrie, cleDe, supprimerCle, biometrieDispo } from "../lib/face.js";
+import { inscrireBiometrie, verifierBiometrie, cleDe, supprimerCle, biometrieDispo, biomometriePrete } from "../lib/face.js";
 import Ic from "./Ic.vue";
 
 const cave = useCave();
@@ -38,24 +38,50 @@ watch(() => props.open, v => { if (v) { pinMode.value = null; pin1.value = ""; p
 const aPin = computed(() => cave.hasPin(cave.PROFIL));
 
 /* ---------- Déverrouillage biométrique (Face ID / empreinte, 100 % natif) ---------- */
+const bioMsg = ref("");    // message de confirmation / erreur inline
 const bioErr = ref("");
+const bioTest = ref("");   // résultat du test après activation
+const bioOkState = ref(false);
 const aBio = computed(() => !!cleDe(cave.PROFIL));
-const bioDispo = biometrieDispo();
+const bioDate = computed(() => {
+  try { const v = JSON.parse(localStorage.getItem("ma-cave-bio-" + cave.PROFIL) || "null"); return v?.ts; } catch { return null; }
+});
+const bioDispo = ref(true);
+biomometriePrete().then(ok => { bioDispo.value = ok; });
+function bioNom() { return /iPhone|iPad/i.test(navigator.userAgent) ? "Face ID" : "l'empreinte"; }
 async function activerBio() {
-  bioErr.value = "";
+  bioErr.value = ""; bioMsg.value = ""; bioTest.value = "";
   try {
     await inscrireBiometrie(cave.PROFIL);
-    cave.toast("Face ID / empreinte activé·e — ta cave s'ouvrira d'un regard");
-  } catch {
-    bioErr.value = "Inscription annulée ou impossible sur cet appareil";
+    bioOkState.value = true;
+    bioMsg.value = `✅ ${bioNom()} activé pour la cave de ${cave.PROFILS[cave.PROFIL]?.nom || cave.PROFIL}`;
+    cave.toast(`Biométrie activée — teste pour vérifier`);
+  } catch (e) {
+    if (e?.bioIncompatible) bioErr.value = "Cet appareil n'a pas de biométrie (ou navigateur non compatible) — pas de QR code ni clé d'accès, on n'en veut pas.";
+    else if (e?.name === "NotAllowedError") bioErr.value = "Inscription annulée — rien n'a été enregistré.";
+    else bioErr.value = "Impossible d'inscrire la biométrie : " + (e?.name || e?.message || "erreur inconnue");
+  }
+}
+async function testerBio() {
+  bioTest.value = ""; bioErr.value = "";
+  try {
+    const id = await verifierBiometrie([cave.PROFIL]);
+    bioTest.value = id ? "✅ Test réussi — ta cave s'ouvrira exactement comme ça" : "Pas de correspondance — refais l'inscription";
+  } catch (e) {
+    if (e?.name === "NotAllowedError") bioTest.value = "Test annulé";
+    else bioTest.value = "Test impossible : " + (e?.name || "erreur");
   }
 }
 function confirmBioOff() {
   cave.askConfirm("Supprimer le déverrouillage biométrique ?", "Supprimer", () => {
     supprimerCle(cave.PROFIL);
+    bioMsg.value = ""; bioTest.value = ""; bioOkState.value = false;
+    bioErr.value = "";
     cave.toast("Déverrouillage biométrique supprimé");
+    bioSuppr.value = true;
   });
 }
+const bioSuppr = ref(false);
 
 /* ---------- Préférences du soir (suggestion « Ce soir ») ---------- */
 const prefs = ref(cave.soirPrefs());
@@ -208,19 +234,24 @@ function confirmDisable() {
       <div class="bg-white border border-hairline rounded-xl2 p-4">
         <div class="flex items-center gap-2 text-sm">
           <Ic name="user" cls="w-4 h-4" :class="aBio ? 'text-accent' : 'text-muted'" />
-          <span v-if="aBio">Ta cave s'ouvre par Face ID ou empreinte au démarrage</span>
-          <span v-else-if="bioDispo">Pas activé·e — la cave ouvre sur le choix du profil</span>
-          <span v-else>Non disponible sur cet appareil ou navigateur</span>
+          <span v-if="aBio">Ta cave s'ouvre par {{ bioNom() }} au démarrage</span>
+          <span v-else-if="bioDispo">Pas activé — la cave ouvre sur le choix du profil</span>
+          <span v-else>Biométrie indisponible sur cet appareil / navigateur</span>
         </div>
+        <div v-if="bioDate" class="text-[11px] text-muted mt-1">Activé le {{ new Date(bioDate).toLocaleDateString('fr-FR') }}</div>
         <div v-if="bioDispo" class="flex gap-2 mt-3">
-          <button v-if="!aBio" @click="activerBio" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Activer</button>
+          <button v-if="!aBio" @click="activerBio" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Activer {{ bioNom() }}</button>
           <template v-else>
-            <button @click="activerBio" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Refaire l'inscription</button>
+            <button @click="testerBio" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Tester</button>
+            <button @click="activerBio" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Refaire</button>
             <button @click="confirmBioOff" class="flex-1 py-2.5 rounded-full border border-hairline text-sm text-muted">Supprimer</button>
           </template>
         </div>
+        <p v-if="bioMsg" class="text-[12px] text-accent font-medium mt-2">{{ bioMsg }}</p>
+        <p v-if="bioTest" class="text-[12px] mt-2" :class="bioTest.startsWith('✅') ? 'text-accent font-medium' : 'text-red'">{{ bioTest }}</p>
+        <p v-if="bioSuppr && !aBio" class="text-[12px] text-muted mt-2">Biométrie supprimée — la cave rouvre sur le choix du profil.</p>
         <p v-if="bioErr" class="text-[11px] text-red mt-2">{{ bioErr }}</p>
-        <p class="text-[10px] text-muted mt-3 leading-relaxed">C'est le système (Face ID sur iPhone, empreinte ou visage sur Android) qui vérifie — rien n'est stocké dans la cave, et un code protégé par PIN reste déverrouillable par biométrie.</p>
+        <p class="text-[10px] text-muted mt-3 leading-relaxed">C'est le système (Face ID sur iPhone, empreinte ou visage sur Android) qui vérifie — aucune donnée biométrique n'est stockée dans la cave, et un code protégé par PIN reste déverrouillable par biométrie.</p>
       </div>
 
       <!-- Code de déverrouillage -->
@@ -255,7 +286,7 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.59</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.60</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

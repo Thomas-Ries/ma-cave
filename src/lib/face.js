@@ -48,8 +48,18 @@ export function biometrieDispo() {
   return typeof window !== "undefined" && !!window.PublicKeyCredential && !!navigator.credentials?.create;
 }
 
+/* Vrai check biométrique : y a-t-il Face ID / empreinte sur CET appareil ?
+   Si non, on n'ouvre aucun prompt (sinon le navigateur propose des clés
+   d'accès avec QR code, téléphone voisin, etc. — on n'en veut pas). */
+export async function biomometriePrete() {
+  if (!biometrieDispo()) return false;
+  try { return await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(); }
+  catch { return false; }
+}
+
 /* Inscription : crée la clé biométrique du profil (prompt Face ID/empreinte) */
 export async function inscrireBiometrie(profilId) {
+  if (!(await biomometriePrete())) { const e = new Error("incompatible"); e.bioIncompatible = true; throw e; }
   const pk = {
     challenge: rand(32),
     rp: { name: "Ma Cave", id: location.hostname },
@@ -65,10 +75,11 @@ export async function inscrireBiometrie(profilId) {
   return id;
 }
 
-/* Vérification au démarrage : le prompt natif, puis le profil correspondant */
+/* Vérification au démarrage (ou test juste après activation) */
 export async function verifierBiometrie(ids) {
   const allow = ids.map(cleDe).filter(Boolean).map(cred => ({ type: "public-key", id: deb64u(cred) }));
   if (!allow.length) return null;
+  if (!(await biomometriePrete())) { const e = new Error("incompatible"); e.bioIncompatible = true; throw e; }
   const pk = { challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 60000, allowCredentials: allow };
   const cred = await navigator.credentials.get({ publicKey: pk });
   return associerCle(b64u(cred.rawId), ids);

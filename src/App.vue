@@ -5,7 +5,7 @@ import { useRouter, useRoute } from "vue-router";
 import { useCave } from "./stores/cave.js";
 import { photoFromFile } from "./util.js";
 import { rattrapeRappels } from "./lib/notifs.js";
-import { verifierBiometrie, cleDe } from "./lib/face.js";
+import { verifierBiometrie, cleDe, biomometriePrete } from "./lib/face.js";
 import Ic from "./components/Ic.vue";
 import FicheModal from "./components/FicheModal.vue";
 import FicheBueModal from "./components/FicheBueModal.vue";
@@ -35,8 +35,10 @@ onMounted(async () => {
   await new Promise(r => setTimeout(r, 2000));
   splashOut.value = true;
   await new Promise(r => setTimeout(r, 450));
-  /* Des visages inscrits → biométrie ; sinon choix du profil */
-  phase.value = Object.values(cave.PROFILS).some(p => cleDe(p.id)) ? "face" : "qui";
+  /* Des visages inscrits ET une vraie biométrie sur l'appareil → écran Face ID ;
+     sinon choix du profil (on ne propose jamais de QR code ni clé d'accès) */
+  const inscrits = Object.values(cave.PROFILS).some(p => cleDe(p.id));
+  phase.value = inscrits && (await biomometriePrete()) ? "face" : "qui";
 });
 
 /* ---------- Déverrouillage biométrique (Face ID / empreinte) ---------- */
