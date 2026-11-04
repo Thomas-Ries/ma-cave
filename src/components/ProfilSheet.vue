@@ -4,9 +4,8 @@
 import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { chercheVille, villeDepuis } from "../lib/soir.js";
-import { visageDe, enregistrerVisage, supprimerVisage } from "../lib/face.js";
+import { inscrireBiometrie, cleDe, supprimerCle, biometrieDispo } from "../lib/face.js";
 import Ic from "./Ic.vue";
-import FaceScan from "./FaceScan.vue";
 
 const cave = useCave();
 const props = defineProps({ open: Boolean, onAvatar: Function });
@@ -38,18 +37,23 @@ watch(() => props.open, v => { if (v) { pinMode.value = null; pin1.value = ""; p
 
 const aPin = computed(() => cave.hasPin(cave.PROFIL));
 
-/* ---------- Reconnaissance faciale (100 % locale) ---------- */
-const faceScan = ref(false);
-const aFace = computed(() => !!visageDe(cave.PROFIL));
-function faceOk(desc) {
-  enregistrerVisage(cave.PROFIL, desc);
-  faceScan.value = false;
-  cave.toast("Reconnaissance faciale activée — ton visage ouvrira ta cave");
+/* ---------- Déverrouillage biométrique (Face ID / empreinte, 100 % natif) ---------- */
+const bioErr = ref("");
+const aBio = computed(() => !!cleDe(cave.PROFIL));
+const bioDispo = biometrieDispo();
+async function activerBio() {
+  bioErr.value = "";
+  try {
+    await inscrireBiometrie(cave.PROFIL);
+    cave.toast("Face ID / empreinte activé·e — ta cave s'ouvrira d'un regard");
+  } catch {
+    bioErr.value = "Inscription annulée ou impossible sur cet appareil";
+  }
 }
-function confirmFaceOff() {
-  cave.askConfirm("Supprimer la reconnaissance faciale ?", "Supprimer", () => {
-    supprimerVisage(cave.PROFIL);
-    cave.toast("Reconnaissance faciale supprimée");
+function confirmBioOff() {
+  cave.askConfirm("Supprimer le déverrouillage biométrique ?", "Supprimer", () => {
+    supprimerCle(cave.PROFIL);
+    cave.toast("Déverrouillage biométrique supprimé");
   });
 }
 
@@ -199,22 +203,24 @@ function confirmDisable() {
         </div>
       </div>
 
-      <!-- Reconnaissance faciale -->
-      <p class="text-[10px] text-muted uppercase tracking-widest mb-2 mt-5">Reconnaissance faciale</p>
+      <!-- Déverrouillage biométrique -->
+      <p class="text-[10px] text-muted uppercase tracking-widest mb-2 mt-5">Face ID / Empreinte</p>
       <div class="bg-white border border-hairline rounded-xl2 p-4">
         <div class="flex items-center gap-2 text-sm">
-          <Ic name="user" cls="w-4 h-4" :class="aFace ? 'text-accent' : 'text-muted'" />
-          <span v-if="aFace">Ton visage ouvre cette cave au démarrage</span>
-          <span v-else>Pas activée — la cave ouvre sur le choix du profil</span>
+          <Ic name="user" cls="w-4 h-4" :class="aBio ? 'text-accent' : 'text-muted'" />
+          <span v-if="aBio">Ta cave s'ouvre par Face ID ou empreinte au démarrage</span>
+          <span v-else-if="bioDispo">Pas activé·e — la cave ouvre sur le choix du profil</span>
+          <span v-else>Non disponible sur cet appareil ou navigateur</span>
         </div>
-        <div class="flex gap-2 mt-3">
-          <button v-if="!aFace" @click="faceScan = true" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Activer</button>
+        <div v-if="bioDispo" class="flex gap-2 mt-3">
+          <button v-if="!aBio" @click="activerBio" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Activer</button>
           <template v-else>
-            <button @click="faceScan = true" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Refaire la capture</button>
-            <button @click="confirmFaceOff" class="flex-1 py-2.5 rounded-full border border-hairline text-sm text-muted">Supprimer</button>
+            <button @click="activerBio" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Refaire l'inscription</button>
+            <button @click="confirmBioOff" class="flex-1 py-2.5 rounded-full border border-hairline text-sm text-muted">Supprimer</button>
           </template>
         </div>
-        <p class="text-[10px] text-muted mt-3 leading-relaxed">Tout se passe sur ton appareil : seul un descripteur numérique est gardé, aucune photo n'est envoyée. Un code protégé par PIN reste déverrouillable par le visage.</p>
+        <p v-if="bioErr" class="text-[11px] text-red mt-2">{{ bioErr }}</p>
+        <p class="text-[10px] text-muted mt-3 leading-relaxed">C'est le système (Face ID sur iPhone, empreinte ou visage sur Android) qui vérifie — rien n'est stocké dans la cave, et un code protégé par PIN reste déverrouillable par biométrie.</p>
       </div>
 
       <!-- Code de déverrouillage -->
@@ -249,11 +255,10 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.58</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.59</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
 
   <!-- Capture du visage (inscription) -->
-  <FaceScan v-if="faceScan" titre="Enregistre ton visage" @ok="faceOk" @close="faceScan = false" />
 </template>

@@ -1,7 +1,7 @@
-/* Reconnaissance faciale 100 % locale : face-api.js n'est chargé qu'à la
-   demande (chunk séparé du bundle principal), les modèles sont téléchargés
-   au premier usage depuis un CDN public, et seul un descripteur numérique
-   (128 valeurs) est stocké par profil — aucune image ne quitte l'appareil. */
+/* Déverrouillage biométrique via WebAuthn : Face ID sur iOS, empreinte ou
+   visage sur Android, Touch ID sur Mac, Windows Hello — le système affiche
+   son propre prompt natif. Rien ne sort de l'appareil : on ne stocke que
+   l'identifiant de la clé (base64url) créée par l'authentificateur. */
 
 /* Stockage : localStorage dans le navigateur, simple Map au node (tests) */
 const mem = new Map();
@@ -10,68 +10,66 @@ const store = {
   set(k, v) { try { if (typeof localStorage !== "undefined") { localStorage.setItem(k, v); return; } } catch {} mem.set(k, v); },
   del(k) { try { if (typeof localStorage !== "undefined") { localStorage.removeItem(k); return; } } catch {} mem.delete(k); }
 };
-const K = id => "ma-cave-face-" + id;
+const K = id => "ma-cave-bio-" + id;
 
-/* ---------- Descripteurs : persistance (pur, testable au node) ---------- */
-export function enregistrerVisage(profilId, desc) {
-  if (!profilId || !Array.isArray(desc) || desc.length !== 128) throw new Error("descripteur invalide");
-  store.set(K(profilId), JSON.stringify({ d: desc, ts: Date.now() }));
+/* ---------- base64url (pur, testable au node) ---------- */
+export function b64u(buf) {
+  const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = "";
+  for (const x of b) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
-export function visageDe(profilId) {
+export function deb64u(s) {
+  const b = atob(String(s).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(b, c => c.charCodeAt(0));
+}
+const rand = n => { const u = new Uint8Array(n); crypto.getRandomValues(u); return u; };
+
+/* ---------- Persistance par profil (pur) ---------- */
+export function enregistrerCle(profilId, credB64) {
+  if (!profilId || !credB64) throw new Error("clé biométrique invalide");
+  store.set(K(profilId), JSON.stringify({ cred: credB64, ts: Date.now() }));
+}
+export function cleDe(profilId) {
   try {
     const v = JSON.parse(store.get(K(profilId)) || "null");
-    return v && Array.isArray(v.d) && v.d.length === 128 ? v.d : null;
+    return v && typeof v.cred === "string" ? v.cred : null;
   } catch { return null; }
 }
-export function supprimerVisage(profilId) { store.del(K(profilId)); }
+export function supprimerCle(profilId) { store.del(K(profilId)); }
 
-/* Distance euclidienne entre deux descripteurs (0 = jumeaux) */
-export function distance(a, b) {
-  let s = 0;
-  for (let i = 0; i < 128; i++) { const d = (a[i] || 0) - (b[i] || 0); s += d * d; }
-  return Math.sqrt(s);
+/* Associe l'identifiant de clé renvoyé par l'authentificateur à un profil */
+export function associerCle(rawB64, ids) {
+  return ids.find(i => cleDe(i) === rawB64) || null;
 }
 
-/* Identification : le profil inscrit le plus proche, sous le seuil */
-export function identifier(desc, ids, seuil = 0.5) {
-  let meilleur = null, meilleure = seuil;
-  for (const id of ids) {
-    const ref = visageDe(id);
-    if (!ref) continue;
-    const d = distance(desc, ref);
-    if (d < meilleure) { meilleure = d; meilleur = id; }
-  }
-  return meilleur;
+/* ---------- WebAuthn (navigateur uniquement) ---------- */
+export function biometrieDispo() {
+  return typeof window !== "undefined" && !!window.PublicKeyCredential && !!navigator.credentials?.create;
 }
 
-/* Descripteur bidon pour les tests (écart contrôlé) */
-export function descripteurFactice(base = 0, ecart = 0) {
-  return Array.from({ length: 128 }, (_, i) => base + (i % 7 === 0 ? ecart : 0));
+/* Inscription : crée la clé biométrique du profil (prompt Face ID/empreinte) */
+export async function inscrireBiometrie(profilId) {
+  const pk = {
+    challenge: rand(32),
+    rp: { name: "Ma Cave", id: location.hostname },
+    user: { id: new TextEncoder().encode(profilId), name: "Profil " + profilId, displayName: "Ma Cave — " + profilId },
+    pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+    authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+    timeout: 60000,
+    attestation: "none"
+  };
+  const cred = await navigator.credentials.create({ publicKey: pk });
+  const id = b64u(cred.rawId);
+  enregistrerCle(profilId, id);
+  return id;
 }
 
-/* ---------- Caméra + modèle (navigateur uniquement) ---------- */
-const POIDS = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights";
-let api = null, enCours = null;
-
-async function modele() {
-  if (api) return api;
-  if (!enCours) {
-    enCours = (async () => {
-      const faceapi = await import("face-api");
-      await faceapi.nets.tinyFaceDetector.loadFromUri(POIDS);
-      await faceapi.nets.faceLandmark68Net.loadFromUri(POIDS);
-      await faceapi.nets.faceRecognitionNet.loadFromUri(POIDS);
-      api = faceapi;
-      return api;
-    })();
-  }
-  return enCours;
-}
-
-/* Extrait le descripteur du visage vu dans la vidéo (null si aucun visage) */
-export async function visageDepuisVideo(video) {
-  const faceapi = await modele();
-  const opt = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
-  const det = await faceapi.detectSingleFace(video, opt).withFaceLandmarks().withFaceDescriptor();
-  return det ? Array.from(det.descriptor) : null;
+/* Vérification au démarrage : le prompt natif, puis le profil correspondant */
+export async function verifierBiometrie(ids) {
+  const allow = ids.map(cleDe).filter(Boolean).map(cred => ({ type: "public-key", id: deb64u(cred) }));
+  if (!allow.length) return null;
+  const pk = { challenge: rand(32), rpId: location.hostname, userVerification: "required", timeout: 60000, allowCredentials: allow };
+  const cred = await navigator.credentials.get({ publicKey: pk });
+  return associerCle(b64u(cred.rawId), ids);
 }

@@ -5,9 +5,8 @@ import { useRouter, useRoute } from "vue-router";
 import { useCave } from "./stores/cave.js";
 import { photoFromFile } from "./util.js";
 import { rattrapeRappels } from "./lib/notifs.js";
-import { visageDe, identifier } from "./lib/face.js";
+import { verifierBiometrie, cleDe } from "./lib/face.js";
 import Ic from "./components/Ic.vue";
-import FaceScan from "./components/FaceScan.vue";
 import FicheModal from "./components/FicheModal.vue";
 import FicheBueModal from "./components/FicheBueModal.vue";
 
@@ -36,20 +35,26 @@ onMounted(async () => {
   await new Promise(r => setTimeout(r, 2000));
   splashOut.value = true;
   await new Promise(r => setTimeout(r, 450));
-  /* Des visages inscrits → reconnaissance directe ; sinon choix du profil */
-  phase.value = Object.values(cave.PROFILS).some(p => visageDe(p.id)) ? "face" : "qui";
+  /* Des visages inscrits → biométrie ; sinon choix du profil */
+  phase.value = Object.values(cave.PROFILS).some(p => cleDe(p.id)) ? "face" : "qui";
 });
 
-/* ---------- Reconnaissance faciale au démarrage ---------- */
-function faceOk(desc) {
-  const id = identifier(desc, Object.values(cave.PROFILS).map(p => p.id));
-  if (id) {
-    cave.markUnlocked(id);
-    entrerProfil(id);
-    cave.toast(`Salut ${cave.PROFILS[id].nom}, reconnu·e !`);
-  } else {
+/* ---------- Déverrouillage biométrique (Face ID / empreinte) ---------- */
+const bioErr = ref(false);
+async function deverrouillerBio() {
+  const ids = Object.values(cave.PROFILS).map(p => p.id);
+  try {
+    const id = await verifierBiometrie(ids);
+    if (id) {
+      cave.markUnlocked(id);
+      entrerProfil(id);
+      cave.toast(`Salut ${cave.PROFILS[id].nom} !`);
+    } else {
+      bioErr.value = true;
+    }
+  } catch {
+    /* annulé par l'utilisateur ou prompt indisponible → retour au choix */
     phase.value = "qui";
-    cave.toast("Visage non reconnu — choisis ton profil");
   }
 }
 
@@ -152,12 +157,13 @@ function onAvatar(ev) {
     <div class="mt-9 w-32 h-1.5 rounded-full bg-hairline overflow-hidden splash-rise-2"><div class="h-full w-1/2 bg-riesling rounded-full splashbar"></div></div>
   </div>
 
-  <!-- Reconnaissance faciale (si au moins un visage est inscrit) -->
+  <!-- Déverrouillage biométrique (si au moins un profil est inscrit) -->
   <div v-else-if="phase === 'face'" class="fixed inset-0 z-[997] bg-cream flex flex-col items-center justify-center px-8">
     <div class="w-16 h-16 rounded-full bg-accent text-white flex items-center justify-center mb-4 shadow-md"><Ic name="user" cls="w-8 h-8" /></div>
     <h2 class="font-serif text-2xl mb-1">Ma Cave</h2>
-    <p class="text-xs text-muted mb-6">On te regarde…</p>
-    <FaceScan mode="identify" @ok="faceOk" @close="phase = 'qui'" />
+    <p class="text-xs text-muted mb-8">{{ bioErr ? "Pas de correspondance — retente ou choisis ton profil" : "Déverrouille ta cave d'un regard" }}</p>
+    <button @click="deverrouillerBio" class="w-full max-w-xs py-3 rounded-full bg-accent text-white text-sm font-medium flex items-center justify-center gap-2"><Ic name="user" cls="w-4 h-4" /> Face ID / Empreinte</button>
+    <button @click="phase = 'qui'" class="mt-5 text-xs text-muted underline underline-offset-2">Choisir mon profil</button>
   </div>
 
   <!-- Verrou (code du profil choisi) -->

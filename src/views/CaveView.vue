@@ -8,7 +8,6 @@ import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
-import { reconnaitEtiquette } from "../lib/photoOcr.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -231,32 +230,6 @@ function appliquePatch(patch) {
   const detail = ["appellation", "cepage", "region", "pays", "cuvee", "prix", "format", "apoDebut", "commentaire"].some(k => k in patch);
   Object.assign(n.value, patch);
   if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs remplis */
-}
-
-/* ---------- Photo → champs reconnus (OCR Tesseract, 100 % local) ---------- */
-const ocrEnCours = ref(false);
-function onPhotoOcr(ev) {
-  const f = ev.target.files[0];
-  ev.target.value = "";
-  if (!f || ocrEnCours.value) return;
-  ocrEnCours.value = true;
-  photoFromFile(f, async data => {
-    n.value.photo = data;   /* l'étiquette devient la photo de la fiche */
-    try {
-      const { patch, brut } = await reconnaitEtiquette(data);
-      const nb = Object.keys(patch).length;
-      console.log("[OCR]", brut);
-      if (nb) {
-        appliquePatch(patch);
-        cave.toast(`${nb} champ${nb > 1 ? "s" : ""} reconnu${nb > 1 ? "s" : ""} sur l'étiquette — dicte pour corriger ou compléter`);
-      } else if (brut) {
-        cave.toast(`Lu sur l'étiquette : « ${brut.replace(/\s+/g, " ").slice(0, 60)}… » — dicte pour corriger`);
-      } else cave.toast("Étiquette illisible — dicte les champs à la voix");
-    } catch {
-      cave.toast("Reconnaissance indisponible (en ligne ?) — dicte à la voix");
-    }
-    ocrEnCours.value = false;
-  });
 }
 
 function toggleDictee() {
@@ -561,10 +534,6 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
             <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
-            <label class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs cursor-pointer" :class="ocrEnCours ? 'bg-accent text-white pointer-events-none' : 'bg-white border border-accent/40 text-accent'" :title="ocrEnCours ? 'Lecture de l’étiquette…' : 'Photographier l’étiquette pour remplir la fiche'">
-              <Ic name="camera" cls="w-4 h-4" /> {{ ocrEnCours ? 'Lecture…' : 'Photo' }}
-              <input type="file" accept="image/*" capture="environment" class="hidden" :disabled="ocrEnCours" @change="onPhotoOcr" />
-            </label>
             <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
           </div>
 
