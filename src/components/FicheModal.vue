@@ -218,7 +218,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
           </div>
         </dl>
 
-        <div class="mt-3 p-3 rounded-xl2 bg-riesling/20 border border-riesling/50">
+        <div v-if="!cave.estSpiritueux(b)" class="mt-3 p-3 rounded-xl2 bg-riesling/20 border border-riesling/50">
           <div class="flex justify-between items-center">
             <p class="text-[10px] text-muted uppercase tracking-widest">Apogée</p>
             <p class="text-sm">{{ apo ? (year < apo.d ? apo.d + ' – ' + apo.f : year > apo.f ? 'passé l\'apogée' : apo.d + ' – ' + apo.f) : '—' }}</p>
@@ -309,7 +309,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
             <input v-model="e.appellation" placeholder="Appellation" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
             <p class="text-[10px] text-muted mt-1 ml-1">Appellation</p>
           </div>
-          <div class="flex gap-2 items-start">
+          <div v-if="e.categorie !== 'Spiritueux'" class="flex gap-2 items-start">
             <div class="flex-1 min-w-0">
               <select v-model="eCepageSel" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
                 <option value="" disabled>Sélectionne…</option>
@@ -366,7 +366,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
               <p class="text-[10px] text-muted mt-1 ml-1">Format</p>
             </div>
           </div>
-          <div class="flex gap-2 items-start">
+          <div v-if="e.categorie !== 'Spiritueux'" class="flex gap-2 items-start">
             <div class="w-1/2 min-w-0">
               <input v-model.number="e.apoDebut" type="number" placeholder="Apogée dès" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
               <p class="text-[10px] text-muted mt-1 ml-1">Apogée dès</p>
@@ -388,7 +388,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
               <label class="flex-1 py-2 rounded-full border border-hairline bg-white text-xs flex items-center justify-center gap-1.5 cursor-pointer"><Ic name="camera" cls="w-4 h-4" /> Photo<input type="file" accept="image/*" class="hidden" @change="newPhoto" /></label>
             </div>
           </div>
-          <p class="text-[11px] text-muted">Sans apogée saisie, elle sera estimée automatiquement après enregistrement.</p>
+          <p v-if="e.categorie !== 'Spiritueux'" class="text-[11px] text-muted">Sans apogée saisie, elle sera estimée automatiquement après enregistrement.</p>
         </div>
         <div class="flex gap-2 mt-4">
           <button type="button" @click="edit = false" class="flex-1 py-2.5 rounded-full border border-hairline text-muted text-sm">Annuler</button>

@@ -302,7 +302,7 @@ const pageItems = computed(() => cave.visible.slice((cave.cavePage - 1) * PER_PA
    et rappelle le total quand un filtre/recherche est actif */
 const filtresActifs = computed(() => {
   const f = cave.db.filters || {};
-  return !!(cave.apogeeFiltre || (f.q || "").trim() || (f.cat && f.cat !== "Toutes") || (f.cave && f.cave !== "Toutes") || (f.region && f.region !== "Toutes"));
+  return !!(cave.apogeeFiltre || (f.q || "").trim() || (f.etage && f.etage !== "Tout") || (f.cat && f.cat !== "Toutes") || (f.cave && f.cave !== "Toutes") || (f.region && f.region !== "Toutes"));
 });
 const visBouteilles = computed(() => cave.visible.reduce((s, b) => s + (b.quantite || 0), 0));
 const totalRefs = computed(() => cave.db.bouteilles.filter(b => b.quantite > 0).length);
@@ -369,6 +369,24 @@ async function onJsonFile(ev) {
   ev.target.value = "";
 }
 
+/* ===== Cave à étages : Vin / Spiritueux / Tout =====
+   Sélecteur persisté dans db.filters.etage. On réinitialise la page,
+   et on nettoie un filtre catégorie devenu incohérent avec l'étage
+   (ex. étage Spiritueux + filtre Rouge → on remet « Toutes »). */
+const ETAGES = [
+  { id: "Vin", label: "Vins", count: c => c.vins },
+  { id: "Spiritueux", label: "Spiritueux", count: c => c.spirit },
+  { id: "Tout", label: "Tout", count: c => c.tout },
+];
+function setEtage(id) {
+  cave.db.filters.etage = id;
+  cave.cavePage = 1;
+  const cat = cave.db.filters.cat;
+  if (id === "Spiritueux" && cat !== "Toutes" && cat !== "Spiritueux") cave.db.filters.cat = "Toutes";
+  if (id === "Vin" && cat === "Spiritueux") cave.db.filters.cat = "Toutes";
+}
+const etageCounts = computed(() => cave.etageCounts);
+
 function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.PROFIL].nom, t => cave.toast(t)); }
 </script>
 
@@ -409,6 +427,17 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <Ic name="user" cls="w-4 h-4" /> Gérer mon profil
         </button>
       </div>
+    </div>
+
+    <!-- Cave à étages : Vins / Spiritueux / Tout -->
+    <div class="flex gap-1.5 mt-2.5">
+      <button v-for="t in ETAGES" :key="t.id" @click="setEtage(t.id)"
+              class="px-3.5 py-1.5 rounded-full text-xs flex items-center gap-1.5 border"
+              :class="(cave.db.filters.etage || 'Tout') === t.id ? 'bg-ink text-white border-ink' : 'bg-white border-hairline text-ink'">
+        <span v-if="t.id === 'Spiritueux'" class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Spiritueux"></span>
+        {{ t.label }}
+        <span class="text-[10px] tabular-nums" :class="(cave.db.filters.etage || 'Tout') === t.id ? 'text-white/70' : 'text-muted'">{{ etageCounts ? (t.id === 'Vin' ? etageCounts.vins : t.id === 'Spiritueux' ? etageCounts.spirit : etageCounts.tout) : '' }}</span>
+      </button>
     </div>
 
     <!-- Outils -->
@@ -639,7 +668,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
                 <input v-model="n.appellation" placeholder="Appellation" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                 <p class="text-[10px] text-muted mt-1 ml-1">Appellation</p>
               </div>
-              <div class="flex gap-2 items-start">
+              <div v-if="n.categorie !== 'Spiritueux'" class="flex gap-2 items-start">
                 <div class="flex-1 min-w-0">
                   <select v-model="cepageSel" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
                     <option value="" disabled>Sélectionne…</option>
@@ -686,7 +715,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
                   <p class="text-[10px] text-muted mt-1 ml-1">Format</p>
                 </div>
               </div>
-              <div class="flex gap-2 items-start">
+              <div v-if="n.categorie !== 'Spiritueux'" class="flex gap-2 items-start">
                 <div class="w-1/2 min-w-0">
                   <input v-model.number="n.apoDebut" @input="apoTouche = true" type="number" placeholder="Apogée dès" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                   <p class="text-[10px] text-muted mt-1 ml-1">Apogée dès</p>
@@ -696,12 +725,12 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
                   <p class="text-[10px] text-muted mt-1 ml-1">Jusqu'à</p>
                 </div>
               </div>
-              <p v-if="apoSugg" class="text-[10px] text-muted ml-1 -mt-0.5">Estimation : {{ apoSugg.debut }}–{{ apoSugg.fin }} · {{ apoSugg.regle }}{{ apoTouche ? ' — tu as modifié la suggestion' : ' — modifiable à tout moment' }}</p>
+              <p v-if="apoSugg && n.categorie !== 'Spiritueux'" class="text-[10px] text-muted ml-1 -mt-0.5">Estimation : {{ apoSugg.debut }}–{{ apoSugg.fin }} · {{ apoSugg.regle }}{{ apoTouche ? ' — tu as modifié la suggestion' : ' — modifiable à tout moment' }}</p>
               <div>
                 <textarea v-model="n.commentaire" rows="2" placeholder="Une occasion, un souvenir, une envie…" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm"></textarea>
                 <p class="text-[10px] text-muted mt-1 ml-1">Commentaire</p>
               </div>
-              <p class="text-[11px] text-muted">L'apogée est pré-estimée depuis le moteur (appellation, cépage, région) — ajuste-la librement, ta valeur prime toujours.</p>
+              <p v-if="n.categorie !== 'Spiritueux'" class="text-[11px] text-muted">L'apogée est pré-estimée depuis le moteur (appellation, cépage, région) — ajuste-la librement, ta valeur prime toujours.</p>
             </template>
             <button v-else type="button" @click="addMore = true" class="text-xs text-accent underline underline-offset-2">Plus d'infos (appellation, région, apogée…)</button>
           </div>

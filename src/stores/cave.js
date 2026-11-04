@@ -16,7 +16,7 @@ function pinHash(s) { let x = 5381; for (const c of s) x = ((x * 33) ^ c.charCod
 export const useCave = defineStore("cave", {
   state: () => ({
     PROFIL: "thomas",
-    db: { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "" } },
+    db: { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout" } },
     denseOn: false,
     TAB: "cave",
     cavePage: 1,
@@ -59,11 +59,26 @@ export const useCave = defineStore("cave", {
       return [...s];
     },
 
+    /* Un spiritueux : type marqué OU catégorie Spiritueux (sécurité import/données anciennes) */
+    estSpiritueux(b) { return b.type === "Spiritueux" || b.categorie === "Spiritueux"; },
+
+    /* Compteurs par étage (références en stock) — pour les pastilles du sélecteur */
+    etageCounts() {
+      let vins = 0, spirit = 0;
+      for (const b of this.db.bouteilles) {
+        if (!(b.quantite > 0)) continue;
+        if (this.estSpiritueux(b)) spirit++; else vins++;
+      }
+      return { vins, spirit, tout: vins + spirit };
+    },
+
     /* Liste visible (filtres + tri + pagination) */
     visible() {
       const f = this.db.filters;
       const year = new Date().getFullYear();
       let list = this.db.bouteilles.filter(b => b.quantite > 0);
+      if (f.etage === "Vin") list = list.filter(b => !this.estSpiritueux(b));
+      else if (f.etage === "Spiritueux") list = list.filter(b => this.estSpiritueux(b));
       if (f.cat !== "Toutes") list = list.filter(b => (b.type === "Spiritueux" ? "Spiritueux" : b.categorie) === f.cat || b.categorie === f.cat);
       if (f.cave && f.cave !== "Toutes") list = list.filter(b => (b.cave || "") === f.cave);
       if (this.apogeeFiltre) list = list.filter(b => this.enApogee(b, year));
@@ -144,10 +159,11 @@ export const useCave = defineStore("cave", {
     load() {
       let db = null;
       try { const raw = localStorage.getItem(this.pKeys.db); db = raw ? JSON.parse(raw) : null; } catch { db = null; }
-      if (!db || !Array.isArray(db.bouteilles)) db = { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "" } };
-      db.filters = db.filters || { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "" };
+      if (!db || !Array.isArray(db.bouteilles)) db = { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout" } };
+      db.filters = db.filters || { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout" };
       db.filters.tri = db.filters.tri || "";
       db.filters.region = db.filters.region || "Toutes";
+      db.filters.etage = db.filters.etage || "Tout"; /* étage de cave : Vin / Spiritueux / Tout */
       if (!Array.isArray(db.listes)) db.listes = [];
       for (const l of db.listes) { l.qtes = l.qtes || {}; l.ids = l.ids || []; l.ext = l.ext || []; }
       db.envies = db.envies || [];
