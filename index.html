@@ -50,9 +50,9 @@
   .toast-move { transition: transform .28s ease; }
   .toast-enter-from { opacity: 0; transform: translateY(14px) scale(.96); }
   .toast-leave-to { opacity: 0; transform: translateY(8px) scale(.97); }
-  /* Splash : barre de chargement riesling (2,6 s pour la version longue) */
+  /* Splash : barre de chargement riesling (1,6 s pour la version courte) */
   @keyframes splashbar { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
-  .splashbar { animation: splashbar 2.6s ease-in-out forwards; }
+  .splashbar { animation: splashbar 1.6s ease-in-out forwards; }
   /* Splash fun : entrées en scène successives */
   @keyframes splashPop { 0% { transform: scale(.4); opacity: 0; } 55% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
   @keyframes splashRise { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }

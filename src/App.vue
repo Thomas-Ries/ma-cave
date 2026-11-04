@@ -5,7 +5,9 @@ import { useRouter, useRoute } from "vue-router";
 import { useCave } from "./stores/cave.js";
 import { photoFromFile } from "./util.js";
 import { rattrapeRappels } from "./lib/notifs.js";
+import { visageDe, identifier } from "./lib/face.js";
 import Ic from "./components/Ic.vue";
+import FaceScan from "./components/FaceScan.vue";
 import FicheModal from "./components/FicheModal.vue";
 import FicheBueModal from "./components/FicheBueModal.vue";
 
@@ -14,7 +16,7 @@ cave.initDark(); /* mode sombre persisté par appareil */
 const router = useRouter();
 const route = useRoute();
 
-const phase = ref("splash"); // splash | qui | lock | app
+const phase = ref("splash"); // splash | face | qui | lock | app
 const splashOut = ref(false);
 const profilAVerifier = ref(null); // profil dont on attend le code
 const pin = ref("");
@@ -30,13 +32,26 @@ function flash(k) {
 }
 
 onMounted(async () => {
-  /* Splash : 3 s d'entrée en scène (bulles, pop, barre), puis fondu 450 ms */
-  await new Promise(r => setTimeout(r, 3000));
+  /* Splash : 2 s d'entrée en scène (bulles, pop, barre), puis fondu 450 ms */
+  await new Promise(r => setTimeout(r, 2000));
   splashOut.value = true;
   await new Promise(r => setTimeout(r, 450));
-  /* Plus de code global : directement le choix du profil (proposé à chaque session) */
-  phase.value = "qui";
+  /* Des visages inscrits → reconnaissance directe ; sinon choix du profil */
+  phase.value = Object.values(cave.PROFILS).some(p => visageDe(p.id)) ? "face" : "qui";
 });
+
+/* ---------- Reconnaissance faciale au démarrage ---------- */
+function faceOk(desc) {
+  const id = identifier(desc, Object.values(cave.PROFILS).map(p => p.id));
+  if (id) {
+    cave.markUnlocked(id);
+    entrerProfil(id);
+    cave.toast(`Salut ${cave.PROFILS[id].nom}, reconnu·e !`);
+  } else {
+    phase.value = "qui";
+    cave.toast("Visage non reconnu — choisis ton profil");
+  }
+}
 
 function pressKey(k) {
   if (pinErr.value) { pin.value = ""; pinErr.value = false; }
@@ -135,6 +150,14 @@ function onAvatar(ev) {
     <h1 class="font-serif text-4xl splash-rise">Ma Cave</h1>
     <p class="text-center text-[10px] text-muted mt-3 tracking-[0.14em] uppercase splash-rise-2">Ma cave · Mes bouteilles · Mon rythme</p>
     <div class="mt-9 w-32 h-1.5 rounded-full bg-hairline overflow-hidden splash-rise-2"><div class="h-full w-1/2 bg-riesling rounded-full splashbar"></div></div>
+  </div>
+
+  <!-- Reconnaissance faciale (si au moins un visage est inscrit) -->
+  <div v-else-if="phase === 'face'" class="fixed inset-0 z-[997] bg-cream flex flex-col items-center justify-center px-8">
+    <div class="w-16 h-16 rounded-full bg-accent text-white flex items-center justify-center mb-4 shadow-md"><Ic name="user" cls="w-8 h-8" /></div>
+    <h2 class="font-serif text-2xl mb-1">Ma Cave</h2>
+    <p class="text-xs text-muted mb-6">On te regarde…</p>
+    <FaceScan mode="identify" @ok="faceOk" @close="phase = 'qui'" />
   </div>
 
   <!-- Verrou (code du profil choisi) -->

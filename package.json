@@ -1,18 +1,19 @@
 {
   "name": "ma-cave",
   "private": true,
-  "version": "2.9.57",
+  "version": "2.9.58",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node test/apogee.test.js && node test/dictee.test.js && node test/photoOcr.test.js"
+    "test": "node test/apogee.test.js && node test/dictee.test.js && node test/photoOcr.test.js && node test/face.test.js"
   },
   "dependencies": {
     "pinia": "^2.1.7",
     "vue": "^3.4.27",
     "vue-router": "^4.3.2",
-    "tesseract.js": "^5.1.1"
+    "tesseract.js": "^5.1.1",
+    "face-api.js": "^0.22.2"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
