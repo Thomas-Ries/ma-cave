@@ -17,4 +17,8 @@ export const CEPAGES = ["Riesling", "Gewurztraminer", "Pinot Gris", "Pinot Blanc
 /* Spécificités de vinification qui changent radicalement la garde (VT, SGN, glace…). */
 export const SPECIFICITES = ["Vendanges tardives", "Sélection de grains nobles", "Vin de glace", "Vin de paille", "Moelleux / Liquoreux"];
 
+/* Mentions des spiritueux (cognac, whisky, rhum…). Stockées dans le champ
+   specificite → synchronisées vers la colonne Notion « Spécificité » telle quelle. */
+export const SPIRIT_MENTIONS = ["VS", "VSOP", "XO", "Napoléon", "Extra", "Hors d'âge", "Single Malt", "Blended", "Cask Strength", "Millésimé"];
+
 export function uid() { return "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }

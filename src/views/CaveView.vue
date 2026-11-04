@@ -5,7 +5,7 @@ import { useRouter } from "vue-router";
 import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
 import { exportLivreCave } from "../lib/livre.js";
-import { uid, CEPAGES, SPECIFICITES } from "../config.js";
+import { uid, CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
 import Ic from "../components/Ic.vue";
@@ -158,6 +158,20 @@ onMounted(() => {
 watch(() => cave.enviePrefill, it => { if (it) { cave.enviePrefill = null; envieVersCave(it); } });
 
 const canAdd = computed(() => (n.value.nom || "").trim().length > 1);
+
+/* ===== Bascule Vin ↔ Spiritueux dans la fiche d'ajout =====
+   L'état dérive de n.categorie (la dictée peut aussi la basculer) ;
+   on mémorise la catégorie de vin pour la restaurer au retour. */
+const estSpirit = computed(() => n.value.categorie === "Spiritueux");
+const prevCategorie = ref("Rouge");
+function switchType(spirit) {
+  if (spirit) {
+    if (n.value.categorie !== "Spiritueux") prevCategorie.value = n.value.categorie || "Rouge";
+    n.value.categorie = "Spiritueux";
+  } else {
+    n.value.categorie = prevCategorie.value || "Rouge";
+  }
+}
 
 /* Pré-remplissage de l'apogée : estimation live pendant la saisie.
    Tant que l'utilisateur n'a pas touché les champs lui-même (@input → apoTouche),
@@ -605,9 +619,19 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <div class="flex items-start justify-between">
             <div>
               <p class="text-[10px] text-muted uppercase tracking-widest">Nouvelle bouteille</p>
-              <p class="font-serif text-lg">Ajouter à la cave</p>
+              <p class="font-serif text-lg">{{ estSpirit ? 'Ajouter un spiritueux' : 'Ajouter à la cave' }}</p>
             </div>
             <button type="button" @click="showAdd = false" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
+          </div>
+
+          <!-- Bascule Vin / Spiritueux : la fiche change de couleur et de champs -->
+          <div class="mt-3 flex gap-1.5">
+            <button type="button" @click="switchType(false)" class="flex-1 py-1.5 rounded-full text-xs border flex items-center justify-center gap-1.5" :class="!estSpirit ? 'bg-accent text-white border-accent' : 'bg-white border-hairline text-ink'">
+              <span class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Rouge"></span> Vin
+            </button>
+            <button type="button" @click="switchType(true)" class="flex-1 py-1.5 rounded-full text-xs border flex items-center justify-center gap-1.5" :class="estSpirit ? 'bg-chartreuse text-white border-chartreuse' : 'bg-white border-hairline text-ink'">
+              <span class="w-2 h-2 rounded-full" :style="'background:' + cave.CAT_COLORS.Spiritueux"></span> Spiritueux
+            </button>
           </div>
 
           <!-- Pastille de confirmation d'ajout -->
@@ -617,7 +641,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
 
           <!-- Dictée vocale + photo -->
           <div class="mt-3 flex items-center gap-2">
-            <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
+            <button v-if="speechOK" type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? (estSpirit ? 'bg-chartreuse text-white' : 'bg-accent text-white') : (estSpirit ? 'bg-white border border-chartreuse/40 text-chartreuse' : 'bg-white border border-accent/40 text-accent')" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
               <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Arrêter' : 'Dicter' }}
             </button>
                         <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "Dis : « Domaine des Lambrays 2019 rouge » ou champ par champ : « nom …, millésime 2019, six bouteilles, prix quinze euros »" }}</p>
@@ -629,7 +653,14 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
               <p class="text-[10px] text-muted mt-1 ml-1">Nom</p>
             </div>
             <div class="flex gap-2 items-start">
-              <div class="flex-1 min-w-0">
+              <div v-if="estSpirit" class="flex-1 min-w-0">
+                <select v-model="n.specificite" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
+                  <option value="">—</option>
+                  <option v-for="m in SPIRIT_MENTIONS" :key="m">{{ m }}</option>
+                </select>
+                <p class="text-[10px] text-muted mt-1 ml-1">Mention (VS, VSOP, XO…)</p>
+              </div>
+              <div v-else class="flex-1 min-w-0">
                 <select v-model="n.categorie" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
                   <option v-for="c in cave.CATS" :key="c">{{ c }}</option>
                 </select>
@@ -665,7 +696,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
 
             <template v-if="addMore">
               <div>
-                <input v-model="n.appellation" placeholder="Appellation" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+                <input v-model="n.appellation" :placeholder="estSpirit ? 'Appellation (Cognac, Islay…)' : 'Appellation'" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                 <p class="text-[10px] text-muted mt-1 ml-1">Appellation</p>
               </div>
               <div v-if="n.categorie !== 'Spiritueux'" class="flex gap-2 items-start">
@@ -732,12 +763,12 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
               </div>
               <p v-if="n.categorie !== 'Spiritueux'" class="text-[11px] text-muted">L'apogée est pré-estimée depuis le moteur (appellation, cépage, région) — ajuste-la librement, ta valeur prime toujours.</p>
             </template>
-            <button v-else type="button" @click="addMore = true" class="text-xs text-accent underline underline-offset-2">Plus d'infos (appellation, région, apogée…)</button>
+            <button v-else type="button" @click="addMore = true" class="text-xs underline underline-offset-2" :class="estSpirit ? 'text-chartreuse' : 'text-accent'">Plus d'infos{{ estSpirit ? ' (appellation, prix…)' : ' (appellation, région, apogée…)' }}</button>
           </div>
 
           <div class="flex gap-2 mt-4">
             <button type="button" @click="showAdd = false" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Annuler</button>
-            <button type="submit" :disabled="!canAdd || saving" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm disabled:opacity-40 flex items-center justify-center gap-1.5">
+            <button type="submit" :disabled="!canAdd || saving" class="flex-1 py-2.5 rounded-full text-white text-sm disabled:opacity-40 flex items-center justify-center gap-1.5" :class="estSpirit ? 'bg-chartreuse' : 'bg-accent'">
               <template v-if="addOk"><Ic name="check" cls="w-4 h-4" /> Ajoutée</template>
               <template v-else>Ajouter</template>
             </button>

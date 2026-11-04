@@ -6,7 +6,7 @@ import { estimeApogee } from "../lib/apogee.js";
 import { platsPourBouteille } from "../lib/accords.js";
 import { partagerBouteille } from "../lib/partage.js";
 import { splitNom, cepageCourt, photoFromFile, accTxt } from "../util.js";
-import { CEPAGES, SPECIFICITES } from "../config.js";
+import { CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
 import Ic from "./Ic.vue";
 import { notePalier } from "../lib/noteEchelle.js";
 
@@ -213,7 +213,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
         </div>
 
         <dl class="mt-3 text-sm">
-          <div v-for="([k, v]) in [['Millésime', b.millesime ?? '—'], ['Cépage', [b.cepage || '—', b.specificite].filter(Boolean).join(' · ')], ['Appellation', b.appellation || '—'], ['Région', [b.region, b.pays].filter(Boolean).join(', ') || '—'], ['Cave', b.cave || '—'], ['Format', b.format || 'Bouteille (75 cl)'], ['Prix', b.prix != null ? b.prix + ' €' : '—'], ['En stock', b.quantite + ' bouteille' + (b.quantite > 1 ? 's' : '')]]" :key="k" class="flex justify-between gap-2 py-1.5 border-b border-hairline last:border-0">
+          <div v-for="([k, v]) in [['Millésime', b.millesime ?? '—'], ...(cave.estSpiritueux(b) ? [['Mention', b.specificite || '—']] : [['Cépage', [b.cepage || '—', b.specificite].filter(Boolean).join(' · ')]]), ['Appellation', b.appellation || '—'], ['Région', [b.region, b.pays].filter(Boolean).join(', ') || '—'], ['Cave', b.cave || '—'], ['Format', b.format || 'Bouteille (75 cl)'], ['Prix', b.prix != null ? b.prix + ' €' : '—'], ['En stock', b.quantite + ' bouteille' + (b.quantite > 1 ? 's' : '')]]" :key="k" class="flex justify-between gap-2 py-1.5 border-b border-hairline last:border-0">
             <dt class="text-muted">{{ k }}</dt><dd class="text-right">{{ v }}</dd>
           </div>
         </dl>
@@ -311,8 +311,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
           </div>
           <div v-if="e.categorie !== 'Spiritueux'" class="flex gap-2 items-start">
             <div class="flex-1 min-w-0">
-              <select v-model="eCepageSel" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
-                <option value="" disabled>Sélectionne…</option>
+              <select v-model="eCepageSel" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">                <option value="" disabled>Sélectionne…</option>
                 <option v-for="c in CEPAGES" :key="c">{{ c }}</option>
                 <option value="Assemblage">Assemblage</option>
                 <option value="__autre__">Autre…</option>
@@ -326,6 +325,15 @@ watch(acc, v => cave.overlay("fiche-acc", v));
                 <option v-for="s in SPECIFICITES" :key="s">{{ s }}</option>
               </select>
               <p class="text-[10px] text-muted mt-1 ml-1">Spécificité (VT, SGN…)</p>
+            </div>
+          </div>
+          <div v-else class="flex gap-2 items-start">
+            <div class="flex-1 min-w-0">
+              <select v-model="e.specificite" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm">
+                <option value="">—</option>
+                <option v-for="m in SPIRIT_MENTIONS" :key="m">{{ m }}</option>
+              </select>
+              <p class="text-[10px] text-muted mt-1 ml-1">Mention (VS, VSOP, XO…)</p>
             </div>
           </div>
           <div class="flex gap-2 items-start">
