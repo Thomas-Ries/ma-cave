@@ -1,12 +1,12 @@
 {
   "name": "ma-cave",
   "private": true,
-  "version": "2.9.51",
+  "version": "2.9.52",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node test/apogee.test.js"
+    "test": "node test/apogee.test.js && node test/dictee.test.js"
   },
   "dependencies": {
     "pinia": "^2.1.7",

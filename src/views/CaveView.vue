@@ -7,6 +7,7 @@ import { estimeApogee } from "../lib/apogee.js";
 import { exportLivreCave } from "../lib/livre.js";
 import { uid } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
+import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
@@ -191,7 +192,6 @@ function saveAdd() {
   cave.syncNotion({ action: "add", bouteille: b });
   cave.toast(b.nom + " bien ajoutée à la cave");
   saving.value = false;
-  /* Pastille de confirmation puis fermeture automatique (ou reset si « Ajouter et continuer ») */
   /* Pastille de confirmation visible puis retour automatique à la cave,
      même quand le formulaire « plus d'infos » est déplié. */
   addOk.value = true;
@@ -204,6 +204,38 @@ function onAddPhoto(ev) {
   photoFromFile(f, data => { n.value.photo = data; cave.toast("Photo ajoutée"); });
   ev.target.value = "";
 }
+
+/* ---------- Dictée vocale (Web Speech API, native navigateur) ---------- */
+const speechOK = speechSupporte();
+const dicteeOn = ref(false);
+const dicteeTexte = ref("");
+let dictee = null, dicteeBuf = "";
+function stopDictee() {
+  dicteeOn.value = false; dicteeTexte.value = "";
+  if (dictee) { dictee.stop(); dictee = null; }
+}
+function toggleDictee() {
+  if (dicteeOn.value) { stopDictee(); return; }
+  dicteeBuf = ""; dicteeTexte.value = "";
+  dictee = creerDictee({
+    onFinal: t => {
+      dicteeBuf += " " + t;   /* on relit tout le tampon : un nom coupé en deux se recolle */
+      const patch = parseDictee(dicteeBuf);
+      if (patch.cave) {
+        if (cave.cavesConnues.includes(patch.cave)) { caveSel.value = patch.cave; delete patch.cave; }
+        else newCave.value = true;   /* cave inconnue : on affiche l'input, n.cave déjà rempli */
+      }
+      const detail = ["appellation", "cepage", "region", "pays", "cuvee", "prix", "format", "apoDebut", "commentaire"].some(k => k in patch);
+      Object.assign(n.value, patch);
+      if (detail) addMore.value = true;   /* déplie « plus d'infos » pour montrer les champs dictés */
+    },
+    onInterim: t => { dicteeTexte.value = t || ""; },
+    onErreur: msg => { stopDictee(); cave.toast(msg || "Dictée indisponible"); },
+  });
+  dictee.start();
+  dicteeOn.value = true;
+}
+watch(showAdd, v => { if (!v) stopDictee(); });
 
 const PER_PAGE = computed(() => cave.denseOn ? 20 : 10);
 const pageCount = computed(() => Math.max(1, Math.ceil(cave.visible.length / PER_PAGE.value)));
@@ -469,6 +501,14 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <!-- Pastille de confirmation d'ajout -->
           <div v-if="addOk" class="mt-3 px-4 py-2.5 rounded-full bg-green/10 border border-green/40 text-green text-xs flex items-center gap-2">
             <Ic name="check" cls="w-4 h-4" /> Bouteille bien ajoutée
+          </div>
+
+          <!-- Dictée vocale -->
+          <div v-if="speechOK" class="mt-3 flex items-center gap-2">
+            <button type="button" @click="toggleDictee" class="shrink-0 h-9 px-3.5 rounded-full flex items-center gap-1.5 text-xs" :class="dicteeOn ? 'bg-accent text-white animate-pulse' : 'bg-white border border-accent/40 text-accent'" :title="dicteeOn ? 'Arrêter la dictée' : 'Remplir la fiche à la voix'">
+              <Ic name="mic" cls="w-4 h-4" /> {{ dicteeOn ? 'Écoute…' : 'Dicter' }}
+            </button>
+            <p v-if="dicteeOn" class="text-[11px] text-muted italic truncate flex-1" title="Transcription en direct">{{ dicteeTexte || "nom Domaine des Lambrays, millésime 2019, catégorie rouge, six bouteilles, prix quinze euros…" }}</p>
           </div>
 
           <div class="mt-4 space-y-2.5">
