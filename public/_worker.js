@@ -416,7 +416,7 @@ const PUB_CSS = `
   :root { --cream:#FAF6F1; --ink:#2B2724; --accent:#7A2E3E; --gold:#A8842C; --riesling:#D9C589; --hairline:#EAE2D9; --muted:#8A7F75; }
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:var(--cream); color:var(--ink); font-family:Georgia,"Times New Roman",serif; display:flex; min-height:100vh; align-items:center; justify-content:center; padding:20px 14px; }
-  .carte { width:400px; max-width:100%; background:#fff; border:1px solid var(--hairline); box-shadow:0 1px 2px rgba(43,39,36,.03),0 10px 30px rgba(43,39,36,.08); overflow:hidden; }
+  .carte { width:400px; max-width:100%; background:#fff; border:1px solid var(--hairline); box-shadow:0 1px 2px rgba(43,39,36,.03),0 10px 30px rgba(43,39,36,.08); overflow:hidden; border-radius:18px; }
   .liseret { height:5px; background:linear-gradient(90deg,var(--accent) 0 55%,var(--riesling) 55% 78%,var(--gold) 78% 100%); }
   .inner { padding:28px 28px 22px; }
   .eyebrow { font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:var(--gold); text-align:center; }
@@ -431,10 +431,10 @@ const PUB_CSS = `
   dl > div { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--hairline); }
   dl > div:last-child { border-bottom:0; }
   dt { color:var(--muted); } dd { text-align:right; }
-  .apogee { margin-top:16px; padding:14px 16px; background:rgba(217,197,137,.18); border:1px solid rgba(217,197,137,.55); font-size:14px; text-align:center; }
+  .apogee { margin-top:16px; padding:14px 16px; background:rgba(217,197,137,.18); border:1px solid rgba(217,197,137,.55); font-size:14px; text-align:center; border-radius:12px; }
   .apogee small { display:block; font-family:-apple-system,system-ui,sans-serif; font-size:9.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
   .cta { display:block; margin-top:22px; text-align:center; }
-  .cta a { display:inline-flex; align-items:center; gap:9px; background:var(--accent); color:#fff; text-decoration:none; padding:12px 24px; font-size:14px; letter-spacing:.04em; box-shadow:0 8px 20px rgba(122,46,62,.3); }
+  .cta a { display:inline-flex; align-items:center; gap:9px; background:var(--accent); color:#fff; text-decoration:none; padding:12px 24px; font-size:14px; letter-spacing:.04em; box-shadow:0 8px 20px rgba(122,46,62,.3); border-radius:12px; }
   .cta p { font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-top:10px; }
   .erreur { text-align:center; padding:60px 20px; font-style:italic; color:var(--muted); }
   h1.grand { font-size:42px; }
@@ -508,9 +508,7 @@ function pageApropos() {
     <path d="M28 10 h14 v22 c0 7 14 12 14 24 v108 c0 4 -3.5 7 -8 7 H22 c-4.5 0 -8 -3 -8 -7 V56 c0 -12 14 -17 14 -24 Z" fill="#7A2E3E"/>
     <rect x="17" y="84" width="36" height="54" fill="#FAF6F1" stroke="#EAE2D9"/>
     <line x1="22" y1="94" x2="48" y2="94" stroke="#D9C589" stroke-width="2"/>
-    <text x="35" y="110" font-family="Georgia, serif" font-size="10" fill="#2B2724" text-anchor="middle" letter-spacing="1">CHÂTEAU</text>
-    <text x="35" y="122" font-family="Georgia, serif" font-size="7" fill="#8A7F75" text-anchor="middle" letter-spacing="2">APPELLATION</text>
-    <text x="35" y="136" font-family="Georgia, serif" font-size="8" fill="#7A2E3E" text-anchor="middle" letter-spacing="1">2019</text>
+    <text x="35" y="122" font-family="Georgia, serif" font-size="11" fill="#7A2E3E" text-anchor="middle" letter-spacing="1.5">2019</text>
   </svg>`;
   const ic = (d, c) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.6">${d}</svg>`;
   const ligne = (svg, t, s) => `<div class="ligne">${svg}<div class="t"><b>${t}</b><span>${s}</span></div></div>`;
