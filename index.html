@@ -102,6 +102,11 @@
   html.dark .bg-cream\/95 { background-color: rgba(37, 29, 23, .95) !important; }
   html.dark .bg-riesling\/\[\.16\] { background-color: rgba(217, 197, 137, .10) !important; }
   html.dark input, html.dark select, html.dark textarea { color: #EFE9DF; }
+  /* Croix de fermeture des popins : pastille ronde bordeaux, icône blanche
+     (même langage que le CTA « + » d'ajout, en plus petit) */
+  .close-x { width: 2rem; height: 2rem; margin: -0.25rem; border-radius: 9999px; background: #7A2E3E; color: #FAF6F1; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform .14s ease; }
+  .close-x:active { transform: scale(.94); }
+  html.dark .close-x { color: #EFE9DF; }
 </style>
 </head>
 <body class="bg-cream text-ink antialiased">

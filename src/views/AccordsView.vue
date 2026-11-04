@@ -139,7 +139,7 @@ function choisirBouteille(b) { bSel.value = b; qVin.value = ""; }
             <p class="text-[10px] text-muted uppercase tracking-widest">{{ plat.famille }}</p>
             <h3 class="font-serif text-xl">{{ accTxt(plat.nom) }}</h3>
           </div>
-          <button @click="plat = null" class="text-muted p-2 -m-2" title="Fermer"><Ic name="x" cls="w-5 h-5" /></button>
+          <button @click="plat = null" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
         </div>
         <p class="text-xs text-muted mt-1">{{ accTxt(plat.desc) }}</p>
 

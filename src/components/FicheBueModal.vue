@@ -47,7 +47,7 @@ function suppr() {
             <p class="text-[10px] text-muted uppercase tracking-widest">{{ h.categorie || "Vin" }}</p>
             <h2 class="font-serif text-xl leading-tight">{{ h.nom }}</h2>
           </div>
-          <button @click="cave.buesFiche = null" class="text-muted p-2" title="Fermer"><Ic name="x" cls="w-5 h-5" /></button>
+          <button @click="cave.buesFiche = null" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
         </div>
 
         <div class="mt-4 p-3 bg-cream rounded-xl2 text-center">

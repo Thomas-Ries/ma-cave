@@ -192,9 +192,10 @@ function saveAdd() {
   cave.toast(b.nom + " bien ajoutée à la cave");
   saving.value = false;
   /* Pastille de confirmation puis fermeture automatique (ou reset si « Ajouter et continuer ») */
+  /* Pastille de confirmation visible puis retour automatique à la cave,
+     même quand le formulaire « plus d'infos » est déplié. */
   addOk.value = true;
-  if (addMore.value) { n.value = blankAdd(); addMore.value = true; newCave.value = false; caveSel.value = ""; setTimeout(() => { addOk.value = false; }, 1100); }
-  else setTimeout(() => { addOk.value = false; showAdd.value = false; cave.cavePage = 1; }, 500);
+  setTimeout(() => { addOk.value = false; showAdd.value = false; cave.cavePage = 1; }, 900);
 }
 
 function onAddPhoto(ev) {
@@ -462,7 +463,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
               <p class="text-[10px] text-muted uppercase tracking-widest">Nouvelle bouteille</p>
               <p class="font-serif text-lg">Ajouter à la cave</p>
             </div>
-            <button type="button" @click="showAdd = false" class="text-muted p-2 -m-2" title="Fermer"><Ic name="x" cls="w-5 h-5" /></button>
+            <button type="button" @click="showAdd = false" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
           </div>
 
           <!-- Pastille de confirmation d'ajout -->
@@ -472,7 +473,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
 
           <div class="mt-4 space-y-2.5">
             <div>
-              <input v-model="n.nom" placeholder="Nom du vin ou du spiritueux" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+              <input v-model="n.nom" placeholder="Domaine ou Spiritueux" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
               <p class="text-[10px] text-muted mt-1 ml-1">Nom</p>
             </div>
             <div class="flex gap-2 items-start">
@@ -569,8 +570,8 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <div class="flex gap-2 mt-4">
             <button type="button" @click="showAdd = false" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Annuler</button>
             <button type="submit" :disabled="!canAdd || saving" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm disabled:opacity-40 flex items-center justify-center gap-1.5">
-              <template v-if="addOk && !addMore"><Ic name="check" cls="w-4 h-4" /> Ajoutée</template>
-              <template v-else>Ajouter{{ addMore ? ' et continuer' : '' }}</template>
+              <template v-if="addOk"><Ic name="check" cls="w-4 h-4" /> Ajoutée</template>
+              <template v-else>Ajouter</template>
             </button>
           </div>
         </form>

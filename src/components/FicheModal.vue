@@ -170,7 +170,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
       <div v-if="!edit" class="p-5">
         <div class="flex items-start justify-end">
           <button @click="startEdit" class="text-muted p-2 -m-2 mr-1" title="Modifier la fiche"><Ic name="pencil" cls="w-5 h-5" /></button>
-          <button @click="cave.closeFiche()" class="text-muted p-2 -m-2" title="Fermer"><Ic name="x" cls="w-5 h-5" /></button>
+          <button @click="cave.closeFiche()" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
         </div>
 
         <img v-if="b.photo" :src="b.photo" alt="" class="w-full h-44 object-cover rounded-xl2 mt-2" />
@@ -234,7 +234,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
           <p v-if="b.quantite === 1 && cave.listesDe(b).length" class="text-[10px] text-muted mt-2">Une seule bouteille : elle ne peut être que dans « {{ cave.listesDe(b)[0].nom }} ».</p>
         </div>
 
-        <button @click="acc = true" class="w-full py-2.5 mb-2 rounded-full bg-riesling/40 border border-riesling text-sm flex items-center justify-center gap-2" title="Les plats qui vont avec cette bouteille"><Ic name="sparkles" cls="w-5 h-5" /> Avec quoi la boire ?</button>
+        <button @click="acc = true" class="w-full py-2.5 mt-4 mb-2 rounded-full bg-riesling/40 border border-riesling text-sm flex items-center justify-center gap-2" title="Les plats qui vont avec cette bouteille"><Ic name="sparkles" cls="w-5 h-5" /> Avec quoi la boire ?</button>
 
         <div class="flex gap-2 mt-4">
           <button @click="boire" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm flex items-center justify-center gap-2"><Ic name="glass" cls="w-5 h-5" /> Boire une bouteille</button>
@@ -249,11 +249,11 @@ watch(acc, v => cave.overlay("fiche-acc", v));
             <p class="text-[10px] text-muted uppercase tracking-widest">Modifier</p>
             <p class="font-serif text-lg leading-tight">{{ sn.domaine }}</p>
           </div>
-          <button type="button" @click="edit = false" class="text-muted p-2 -m-2" title="Annuler"><Ic name="x" cls="w-5 h-5" /></button>
+          <button type="button" @click="edit = false" class="close-x" title="Annuler"><Ic name="x" cls="w-4 h-4" /></button>
         </div>
         <div class="mt-4 space-y-2.5">
           <div>
-            <input v-model="e.nom" placeholder="Nom du vin ou du spiritueux" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+            <input v-model="e.nom" placeholder="Domaine ou Spiritueux" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
             <p class="text-[10px] text-muted mt-1 ml-1">Nom</p>
           </div>
           <div class="flex gap-2 items-start">
@@ -360,7 +360,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
       <div class="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-xl2 border border-hairline max-h-[85vh] overflow-y-auto overscroll-contain p-5">
         <div class="flex items-start justify-between gap-2 mb-1">
           <p class="text-[10px] text-muted uppercase tracking-widest">Avec quoi la boire ?</p>
-          <button @click="acc = false" class="text-muted p-2 -m-2" title="Fermer"><Ic name="x" cls="w-5 h-5" /></button>
+          <button @click="acc = false" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
         </div>
         <p class="font-serif text-lg mb-3">{{ b.nom }}{{ b.millesime ? " " + b.millesime : "" }}</p>
         <div v-for="(r, i) in accs" :key="i" class="rounded-xl2 border p-3 mb-2" :class="i === 0 ? 'border-riesling shadow-[0_6px_18px_rgb(217_197_137/0.35)]' : 'border-hairline'">

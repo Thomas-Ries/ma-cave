@@ -105,7 +105,7 @@ function confirmDisable() {
           <p class="text-[10px] text-muted uppercase tracking-widest">Profil</p>
           <h3 class="font-serif text-lg">Cave de {{ cave.PROFILS[cave.PROFIL].nom }}</h3>
         </div>
-        <button @click="emit('close')" class="text-muted p-2 -m-2" title="Fermer"><Ic name="x" cls="w-5 h-5" /></button>
+        <button @click="emit('close')" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
       </div>
 
       <!-- Avatar -->
@@ -214,7 +214,7 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.50</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.51</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
