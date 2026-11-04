@@ -287,10 +287,11 @@ export const useCave = defineStore("cave", {
       b.modifLe = new Date().toISOString();
       b.bues = (b.bues || 0) + 1;
       if (b.quantite === 0) { b.statut = "Bue"; for (const l of this.listes) l.ids = (l.ids || []).filter(x => x !== b.id); }
-      this.db.bues.push({ id: uid(), nom: b.nom, millesime: b.millesime, categorie: b.categorie, date: new Date().toISOString(), note: null });
+      const e = { id: uid(), nom: b.nom, millesime: b.millesime, categorie: b.categorie, date: new Date().toISOString(), note: null, occasion: "", avec: "", commentaire: "" };
+      this.db.bues.push(e);
       this.save();
       this.syncBues();
-      if (!silent) { this.toast(`${b.nom} — santé ! (retour possible dans Bues)`); this.syncNotion({ action: "drink", bouteille: b }); }
+      if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = e.id; }
     },
 
     /* « Ce soir » : mettre la bouteille au frigo (1 bouteille prélevée).
