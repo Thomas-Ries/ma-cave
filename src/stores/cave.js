@@ -534,8 +534,8 @@ export const useCave = defineStore("cave", {
         this.save();
         this.toast(`Récupéré : ${r.added} ajoutée(s), ${r.updated} mise(s) à jour, ${r.kept} conservée(s)`);
         this.flushQueue();
+        await this.pullBues();   /* ATTENDRE la fusion distante AVANT de pousser : sinon le push écrase les bues de l'autre appareil */
         this.syncBues();
-        this.pullBues();
       } catch { this.toast("Récupération impossible : " + (this.derniereRaison || "réessaie plus tard")); }
       finally { this.syncBusy(false); }
     },
@@ -681,6 +681,9 @@ export const useCave = defineStore("cave", {
         }
         if (changed) {
           this.db.bues = [...loc.values()].sort((a, b) => (a.date || "") < (b.date || "") ? -1 : 1);
+          /* Les entrées du serveur (ancien format) n'ont pas d'id : sans id, la fiche
+             « bue » ne s'ouvre pas (bueOuverte cherche par id) et les :key explosent. */
+          this.db.bues.forEach(h => { if (!h.id) h.id = uid(); });
           this.buesFiche = null;
           this.save();
           this.toast((suppr && changed === suppr) ? (suppr > 1 ? suppr + " bouteilles bues supprimées" : "1 bouteille bue supprimée") : changed > 1 ? changed + " bouteilles bues récupérée(s) de l’autre appareil" : "1 bouteille bue récupérée de l’autre appareil");

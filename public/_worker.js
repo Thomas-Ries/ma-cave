@@ -416,7 +416,7 @@ export default {
     /* Historique des bouteilles bues : par profil, comme les préférences */
     if (url.pathname === "/api/bues") {
       if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", BUES_TITLE, BUES_PROP);
-      if (request.method === "POST") return metaPost(request, env, BUES_TITLE, BUES_PROP, s => { try { const j = JSON.parse(s); return Array.isArray(j); } catch { return false; } });
+      if (request.method === "POST") return metaPost(request, env, BUES_TITLE, BUES_PROP, s => { try { const j = JSON.parse(s); return Array.isArray(j) || (j && Array.isArray(j.bues)); } catch { return false; } });
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
     }
 
