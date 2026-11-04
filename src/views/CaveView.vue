@@ -138,7 +138,7 @@ function blankAdd() {
   return { nom: "", categorie: "Rouge", quantite: 1, millesime: null, prix: null, appellation: "", cepage: "", region: "", pays: "France", cave: "", cuvee: "", format: "Bouteille (75 cl)", statut: "En cave", commentaire: "", photo: null, apoDebut: null, apoFin: null };
 }
 const preFill = ref(false); /* pré-remplissage depuis une note d'achat : ne pas écraser n à l'ouverture */
-watch(showAdd, v => { if (v) { if (!preFill.value) { n.value = blankAdd(); addMore.value = false; addOk.value = false; newCave.value = false; caveSel.value = ""; } preFill.value = false; } });
+watch(showAdd, v => { if (v) { if (!preFill.value) { n.value = blankAdd(); addMore.value = false; addOk.value = false; newCave.value = false; caveSel.value = ""; } apoTouche.value = false; preFill.value = false; } });
 
 /* Promotion d'une envie d'achat → formulaire d'ajout pré-rempli */
 function envieVersCave(it) {
@@ -158,6 +158,22 @@ onMounted(() => {
 watch(() => cave.enviePrefill, it => { if (it) { cave.enviePrefill = null; envieVersCave(it); } });
 
 const canAdd = computed(() => (n.value.nom || "").trim().length > 1);
+
+/* Pré-remplissage de l'apogée : estimation live pendant la saisie.
+   Tant que l'utilisateur n'a pas touché les champs lui-même (@input → apoTouche),
+   la suggestion du moteur remplit Apogée dès / Jusqu'à ; dès qu'il les édite,
+   on ne ré-écrit plus jamais par-dessus. */
+const apoTouche = ref(false);
+const apoSugg = computed(() => {
+  const x = parseFloat(String(n.value.millesime ?? "").replace(",", "."));
+  return estimeApogee({
+    nom: n.value.nom, cuvee: n.value.cuvee, appellation: n.value.appellation,
+    cepage: n.value.cepage, region: n.value.region, categorie: n.value.categorie,
+    type: n.value.categorie === "Spiritueux" ? "Spiritueux" : "Vin",
+    millesime: isNaN(x) ? null : Math.round(x),
+  });
+});
+watch(apoSugg, s => { if (!apoTouche.value && s) { n.value.apoDebut = s.debut; n.value.apoFin = s.fin; } }, { immediate: true });
 
 function saveAdd() {
   if (!canAdd.value || saving.value) return;
@@ -647,19 +663,20 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
               </div>
               <div class="flex gap-2 items-start">
                 <div class="w-1/2 min-w-0">
-                  <input v-model.number="n.apoDebut" type="number" placeholder="Apogée dès" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+                  <input v-model.number="n.apoDebut" @input="apoTouche = true" type="number" placeholder="Apogée dès" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                   <p class="text-[10px] text-muted mt-1 ml-1">Apogée dès</p>
                 </div>
                 <div class="w-1/2 min-w-0">
-                  <input v-model.number="n.apoFin" type="number" placeholder="Jusqu'à" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
+                  <input v-model.number="n.apoFin" @input="apoTouche = true" type="number" placeholder="Jusqu'à" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm" />
                   <p class="text-[10px] text-muted mt-1 ml-1">Jusqu'à</p>
                 </div>
               </div>
+              <p v-if="apoSugg" class="text-[10px] text-muted ml-1 -mt-0.5">Estimation : {{ apoSugg.debut }}–{{ apoSugg.fin }} · {{ apoSugg.regle }}{{ apoTouche ? ' — tu as modifié la suggestion' : ' — modifiable à tout moment' }}</p>
               <div>
                 <textarea v-model="n.commentaire" rows="2" placeholder="Une occasion, un souvenir, une envie…" class="w-full bg-cream border border-hairline rounded-lg px-3 py-2.5 text-sm"></textarea>
                 <p class="text-[10px] text-muted mt-1 ml-1">Commentaire</p>
               </div>
-              <p class="text-[11px] text-muted">Sans apogée saisie, elle sera estimée automatiquement (sauf spiritueux).</p>
+              <p class="text-[11px] text-muted">L'apogée est pré-estimée depuis le moteur (appellation, cépage, région) — ajuste-la librement, ta valeur prime toujours.</p>
             </template>
             <button v-else type="button" @click="addMore = true" class="text-xs text-accent underline underline-offset-2">Plus d'infos (appellation, région, apogée…)</button>
           </div>
