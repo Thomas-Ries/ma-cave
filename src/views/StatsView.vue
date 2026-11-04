@@ -49,7 +49,6 @@ const mill = computed(() => {
   return ms.length ? { min: Math.min(...ms), max: Math.max(...ms) } : null;
 });
 
-const euro = v => (Math.round(v) || v) ? Math.round(v).toLocaleString("fr-FR") + " €" : "—";
 </script>
 
 <template>
@@ -67,19 +66,9 @@ const euro = v => (Math.round(v) || v) ? Math.round(v).toLocaleString("fr-FR") +
         <p class="font-serif text-3xl mt-1 tabular-nums">{{ st.refs }}</p>
       </div>
       <div class="bg-white border border-hairline rounded-xl2 p-4">
-        <p class="text-[10px] text-muted uppercase tracking-widest">Valeur</p>
-        <p class="font-serif text-3xl mt-1 tabular-nums">{{ st.valeur ? euro(st.valeur) : '—' }}</p>
-        <p v-if="st.valeur" class="text-[11px] text-muted mt-0.5">prix connus uniquement</p>
-      </div>
-      <div class="bg-white border border-hairline rounded-xl2 p-4">
         <p class="text-[10px] text-muted uppercase tracking-widest">Bues</p>
         <p class="font-serif text-3xl mt-1 tabular-nums">{{ st.buesCount }}</p>
         <p v-if="st.avgNote" class="text-[11px] text-muted mt-0.5">note moyenne {{ st.avgNote }}/100</p>
-      </div>
-      <div class="bg-white border border-hairline rounded-xl2 p-4">
-        <p class="text-[10px] text-muted uppercase tracking-widest">Valeur bue</p>
-        <p class="font-serif text-3xl mt-1 tabular-nums">{{ st.buesPrix ? euro(st.buesPrix) : '—' }}</p>
-        <p v-if="st.buesPrix" class="text-[11px] text-muted mt-0.5">santé !</p>
       </div>
       <div v-if="mill" class="bg-white border border-hairline rounded-xl2 p-4">
         <p class="text-[10px] text-muted uppercase tracking-widest">Millésimes</p>
