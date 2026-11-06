@@ -21,6 +21,7 @@ const IMPORT_HEADERS = {
   prix: ["prix", "price", "valeur"],
   cave: ["cave", "cellier"],
   cuvee: ["cuvee", "cuvee", "cru", "parcelle"],
+  specificite: ["specificite", "mention", "specificitemention"], /* VT/SGN pour les vins, VS/XO… pour les spiritueux */
   format: ["format", "contenance", "bouteilleformat"],
   statut: ["statut", "status", "etat"],
   commentaire: ["commentaire", "comment", "notes", "note"],
@@ -73,6 +74,7 @@ function rowToBottle(row, map) {
     commentaire: String(get("commentaire") ?? "").trim(),
     appellation: String(get("appellation") ?? "").trim(),
     pays: String(get("pays") ?? "").trim(),
+    specificite: String(get("specificite") ?? "").trim(),
   };
   if (!b.categorie) b.categorie = b.type === "Spiritueux" ? "Spiritueux" : "Rouge";
   /* « Moelleux » n'est plus une catégorie : colonne Excel → Blanc + spécificité */
