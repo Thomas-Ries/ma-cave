@@ -1,6 +1,6 @@
 <script setup>
 /* Apogées : à boire / bientôt / passé — avec rappel d'injecter openFiche */
-import { computed, inject, ref } from "vue";
+import { computed, inject, ref, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { splitNom, cepageCourt } from "../util.js";
 import Ic from "../components/Ic.vue";
@@ -12,6 +12,8 @@ const year = new Date().getFullYear();
 /* Filtre des cartes du haut : null = liste complète ; re-clic = retour au complet.
    (≠ apoAlerte, qui ne pilote QUE les notifications.) */
 const apoFiltre = ref(null);
+/* Filtre demandé par l'onglet « Ce soir » (compteurs) : appliqué une fois puis consommé */
+watch(() => cave.apoDemande, v => { if (v) { apoFiltre.value = v; cave.apoDemande = null; } }, { immediate: true });
 function setFiltre(id) { apoFiltre.value = apoFiltre.value === id ? null : id; }
 
 /* Code couleur repos : riesling (à boire) → or (bientôt) → bordeaux (passées), plus soutenu quand actif */

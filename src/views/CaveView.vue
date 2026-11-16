@@ -6,7 +6,7 @@ import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
 import { exportLivreCave } from "../lib/livre.js";
 import { uid, CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
-import { photoFromFile, splitNom, cepageCourt, regionTxt, tempService } from "../util.js";
+import { photoFromFile, splitNom, cepageCourt, regionTxt } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
 import Ic from "../components/Ic.vue";
 import BottleSvg from "../components/BottleSvg.vue";
@@ -63,73 +63,12 @@ const canInstall = ref(false);
 let deferredPrompt = null;
 onMounted(() => window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferredPrompt = e; canInstall.value = true; }));
 
-/* ===== « Ce soir, sers plutôt… » =====
-   Une suggestion stable par jour ; fermée en croix → n'est plus proposée avant demain ;
-   le lendemain, une AUTRE bouteille que celle de la veille (bue ou non).
-   Classement : urgence apogée + météo (Open-Meteo) + saison, selon les préférences Profil. */
-import { classeSoir, meteoActuelle } from "../lib/soir.js";
-
-const ceSoir = ref(null);
-const meteo = ref(null);
-const prefsSoir = ref(cave.soirPrefs());
-watch(() => cave.soirVersion, () => { prefsSoir.value = cave.soirPrefs(); initSoir(); });
-const ceSoirTemp = computed(() => ceSoir.value ? tempService(ceSoir.value.b) : null);
-const soirKey = () => cave.pKeys.db + "-soir";
-function soirState() { try { return JSON.parse(localStorage.getItem(soirKey()) || "null") } catch { return null } }
-function saveSoir(s) { try { localStorage.setItem(soirKey(), JSON.stringify(s)) } catch {} }
-function classeDuSoir() { return classeSoir(cave.soirItems, prefsSoir.value, meteo.value); }
-const soirOff = ref(false); /* masqué pour CETTE session seulement — revient au prochain lancement */
-function pickSoir(suivante) {
-  const today = new Date().toISOString().slice(0, 10);
-  const st = soirState() || {};
-  if (soirOff.value) { ceSoir.value = null; return; }
-  const cands = classeDuSoir();
-  if (!cands.length) { ceSoir.value = null; return; }
-  let idx = st.jour === today ? st.idx : 0;
-  /* La bouteille d'hier : ne pas reproposer la même deux jours de suite */
-  if (st.jour !== today && st.lastId && cands.length > 1 && cands[idx] && cands[idx].b.id === st.lastId) idx = 1;
-  if (suivante && ceSoir.value) { const i = cands.findIndex(c => c.b.id === ceSoir.value.b.id); idx = ((i < 0 ? idx : i) + 1) % cands.length; }
-  if (!cands[idx]) idx = 0;
-  ceSoir.value = cands[idx];
-  saveSoir({ jour: today, idx, lastId: ceSoir.value.b.id });
-}
-/* Mode voyage : position ponctuelle juste pour la météo (jamais enregistrée dans les
-   préférences ni dans Notion — la position validée reste la référence). */
-async function posVoyage() {
-  if (!prefsSoir.value.voyage) return null;
-  if (!navigator.geolocation) return null;
-  return new Promise(res => {
-    const done = ok => res(ok);
-    navigator.geolocation.getCurrentPosition(p => done({ lat: p.coords.latitude, lon: p.coords.longitude }), () => done(null), { timeout: 5000, maximumAge: 600000 });
-    setTimeout(() => done(null), 6000); /* garde-fou si le GPS ne répond jamais */
-  });
-}
-async function initSoir() {
-  pickSoir(false);
-  if (prefsSoir.value.meteo && prefsSoir.value.lat != null) {
-    const ici = (await posVoyage()) || prefsSoir.value;
-    const m = await meteoActuelle(ici.lat, ici.lon);
-    if (m && m.t !== meteo.value?.t) { meteo.value = m; pickSoir(false); }
-  }
-}
-function fermerSoir() { ceSoir.value = null; soirOff.value = true; }
-function sortirSoir() {
-  const b = ceSoir.value?.b;
-  if (!b) return;
-  ceSoir.value = null; soirOff.value = true;
-  cave.toast(`${b.nom} sortie pour ce soir — santé !`);
-}
-function frigoSoir() {
-  const b = ceSoir.value?.b;
-  if (!b) return;
-  ceSoir.value = null; soirOff.value = true;
-  cave.auFrigo(b);
-  cave.rappelFrigo(b);
-}
-onMounted(() => initSoir());
 function installer() { if (!deferredPrompt) return; deferredPrompt.prompt(); deferredPrompt = null; canInstall.value = false; }
 
 watch(showAdd, v => cave.overlay("add", v));
+/* L'onglet Ce soir demande l'ouverture du formulaire d'ajout (rachat « Autre… » ou bouton +) */
+watch(() => cave.ouvrirAjout, v => { if (v) { cave.ouvrirAjout = false; showAdd.value = true; } });
+onMounted(() => { if (cave.ouvrirAjout) { cave.ouvrirAjout = false; showAdd.value = true; } });
 watch(showFiltres, v => cave.overlay("filtres", v));
 watch(showListes, v => cave.overlay("listes", v));
 watch(importRows, v => cave.overlay("import", !!v));
@@ -490,32 +429,6 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           </button>
         </div>
         <button @click="showFichiers = false" class="w-full mt-4 py-2.5 rounded-full border border-hairline text-sm">Fermer</button>
-      </div>
-    </div>
-
-    <!-- Suggestion du soir : urgence apogée + température de service (v52) -->
-    <div v-if="ceSoir && prefsSoir.bandeauSoir !== false" class="mt-3 rounded-xl2 border border-accent/25 bg-accent-soft overflow-hidden">
-      <div class="flex items-stretch">
-        <div class="w-[3px] self-stretch shrink-0 bg-accent"></div>
-        <div class="flex-1 min-w-0 py-3 pl-4 pr-2">
-          <div class="flex items-center justify-between gap-2">
-            <p class="text-[10px] text-accent uppercase tracking-widest">{{ meteo ? 'Il fait ' + meteo.t + ' °C — sers plutôt…' : 'Ce soir, sers plutôt…' }}</p>
-            <button @click="fermerSoir" class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink" title="Masquer jusqu'à demain"><Ic name="x" cls="w-3.5 h-3.5" /></button>
-          </div>
-          <button @click="openFiche(ceSoir.b.id, 'cave')" class="text-left mt-0.5 max-w-full">
-            <p class="text-sm font-medium break-words leading-snug">{{ splitNom(ceSoir.b).domaine }}</p>
-            <p class="text-[11px] text-muted mt-0.5 break-words leading-snug">{{ [ceSoir.b.millesime, splitNom(ceSoir.b).cuvee, regionTxt(ceSoir.b)].filter(Boolean).join(' · ') }}</p>
-          </button>
-          <div v-if="ceSoir.r.length > 1" class="flex items-center gap-1.5 mt-1.5 flex-wrap">
-            <span v-for="r in ceSoir.r.slice(1)" :key="r" class="text-[10px] px-1.5 py-0.5 rounded-full bg-riesling/40 text-ink">{{ r }}</span>
-          </div>
-          <p class="text-[10px] text-muted mt-1.5">🥂 {{ ceSoirTemp.c }} · {{ ceSoirTemp.t }}</p>
-          <div class="flex gap-2.5 mt-3">
-            <button @click="sortirSoir" class="flex-1 py-2.5 rounded-full bg-accent text-white text-[11px] flex items-center justify-center gap-1.5"><Ic name="bottleEmpty" cls="w-3.5 h-3.5" /> Sortir</button>
-            <button @click="frigoSoir" class="flex-1 py-2.5 rounded-full border border-accent/40 text-accent text-[11px] flex items-center justify-center gap-1.5"><Ic name="snow" cls="w-3.5 h-3.5" /> Au frigo</button>
-            <button @click="pickSoir(true)" class="flex-1 py-2.5 rounded-full border border-gold/60 text-gold text-[11px] flex items-center justify-center gap-1.5" title="Proposer une autre bouteille"><Ic name="sparkles" cls="w-3.5 h-3.5" /> Une autre idée</button>
-          </div>
-        </div>
       </div>
     </div>
 

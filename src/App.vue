@@ -135,7 +135,8 @@ setInterval(() => { if (navigator.onLine && cave.queueLen()) cave.flushQueue(); 
 watch(() => cave.askConf, v => cave.overlay("ask", !!v));
 
 const TABS = [
-  { id: "cave", icon: "cave", label: "Cave", path: "/" },
+  { id: "soir", icon: "glass", label: "Ce soir", path: "/soir" },
+  { id: "cave", icon: "cave", label: "Cave", path: "/cave" },
   { id: "apogees", icon: "clock", label: "Apogées", path: "/apogees" },
   { id: "accords", icon: "sparkles", label: "Accords", path: "/accords" },
   { id: "bues", icon: "archive", label: "Bues", path: "/bues" },

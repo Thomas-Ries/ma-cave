@@ -204,7 +204,7 @@ function partagePDF() {
   <section class="p-4 pb-24 max-w-2xl mx-auto">
     <!-- ===== Liste des notes ===== -->
     <template v-if="!noteOuverte">
-      <button @click="router.push('/')" class="text-xs text-muted flex items-center gap-1 -ml-1 py-1" title="Retour à la cave"><Ic name="chevL" cls="w-4 h-4" /> Ma cave</button>
+      <button @click="router.push('/cave')" class="text-xs text-muted flex items-center gap-1 -ml-1 py-1" title="Retour à la cave"><Ic name="chevL" cls="w-4 h-4" /> Ma cave</button>
       <div class="mt-1">
         <p class="text-[10px] text-muted uppercase tracking-widest">Panier</p>
         <h1 class="font-serif text-2xl leading-tight">Envies d'achat</h1>

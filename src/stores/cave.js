@@ -31,6 +31,8 @@ export const useCave = defineStore("cave", {
     buesFiche: null,        /* index dans db.bues de la fiche « bue » ouverte */
     askConf: null,          /* popin de confirmation maison */
     enviePrefill: null,     /* article d'envie → pré-remplir le formulaire d'ajout au retour sur la Cave */
+    ouvrirAjout: false,     /* demande d'ouverture du formulaire d'ajout depuis l'onglet Ce soir */
+    apoDemande: null,       /* filtre à appliquer à l'onglet Apogées à l'arrivée depuis Ce soir */
     toasts: [],
     busy: 0,                /* synchro en cours (pastille loader) */
     darkOn: false,          /* mode sombre « cave » (persisté par appareil) */
@@ -51,6 +53,16 @@ export const useCave = defineStore("cave", {
     nbReservees: (s) => s.listes.reduce((n, l) => n + (l.ids || []).length, 0),
     /* Envies d'achat : bouteilles notées mais pas encore achetées */
     nbEnvies: (s) => (s.db.envies || []).reduce((n, e) => n + (e.items || []).filter(i => !i.ajouteLe).length, 0),
+
+    /* Rachats fréquents (onglet Ce soir) : les références les mieux fournies de la cave —
+       un rachat réel est presque toujours une référence qu'on possède déjà en nombre. */
+    topRachats(s) {
+      return s.db.bouteilles
+        .filter(b => b.quantite > 0)
+        .slice()
+        .sort((a, z) => z.quantite - a.quantite || (a.nom || "").localeCompare(z.nom || ""))
+        .slice(0, 3);
+    },
     listeQ: () => (l, bid) => { const q = (l.qtes || {})[bid]; return q > 1 ? q : 1; },
     /* Caves déjà saisies, pour les suggestions du formulaire d'ajout */
     cavesConnues() {
@@ -251,7 +263,7 @@ export const useCave = defineStore("cave", {
       if (!PROFILS[id]) return;
       this.PROFIL = id;
       try { localStorage.setItem(PROFIL_KEY, id); } catch {}
-      this.apoAlerte = null; this.buesFiche = null; this.TAB = "cave"; this.apogeeFiltre = false; this.cavePage = 1;
+      this.apoAlerte = null; this.buesFiche = null; this.apogeeFiltre = false; this.cavePage = 1;
       this.fichesOuvertes = []; this.ficheEdit = false; this.ficheAccord = false;
       this.load();
     },
@@ -303,7 +315,7 @@ export const useCave = defineStore("cave", {
     },
 
     /* ---------- Fiches ---------- */
-    openFiche(id, retour) { this.fichesOuvertes = [id]; this.ficheEdit = false; this.ficheAccord = false; if (retour) this.ficheRetour = retour; if (this.TAB !== "cave") this.TAB = "cave"; },
+    openFiche(id, retour) { this.fichesOuvertes = [id]; this.ficheEdit = false; this.ficheAccord = false; if (retour) this.ficheRetour = retour; },
     closeFiche() {
       this.fichesOuvertes = []; this.ficheEdit = false; this.ficheAccord = false;
       this.ficheRetour = null;
@@ -322,6 +334,18 @@ export const useCave = defineStore("cave", {
       this.save();
       this.syncBues();
       if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = e.id; }
+    },
+
+    /* « Ce soir » → rachat en un tap : +1 sur une référence existante. */
+    plusUn(b) {
+      const cible = this.db.bouteilles.find(x => x.id === b.id);
+      if (!cible) return;
+      cible.quantite = (cible.quantite || 0) + 1;
+      cible.statut = cible.statut === "Bue" ? "En cave" : cible.statut;
+      cible.modifLe = new Date().toISOString();
+      this.save();
+      this.syncNotion({ action: "sync", bouteilles: [cible] });
+      this.toast(`${cible.nom} · ×${cible.quantite}`);
     },
 
     /* « Ce soir » : mettre la bouteille au frigo (1 bouteille prélevée).
