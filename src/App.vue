@@ -137,14 +137,18 @@ watch(() => cave.askConf, v => cave.overlay("ask", !!v));
 const TABS = [
   { id: "soir", icon: "glass", label: "Ce soir", path: "/soir" },
   { id: "cave", icon: "cave", label: "Cave", path: "/cave" },
-  { id: "apogees", icon: "clock", label: "Apogées", path: "/apogees" },
-  { id: "accords", icon: "sparkles", label: "Accords", path: "/accords" },
-  { id: "bues", icon: "archive", label: "Bues", path: "/bues" },
-  { id: "stats", icon: "chart", label: "Stats", path: "/stats" }
+  { id: "carnet", icon: "note", label: "Le carnet", path: "/carnet" }
 ];
+/* Les vues du carnet (envies, accords, bues, stats) restent accessibles : elles
+   highlightent l'onglet Le carnet au lieu d'un onglet disparu. */
+const CARNET_ROUTES = ["/envies", "/accords", "/bues", "/stats"];
 
 function go(t) { cave.TAB = t.id; router.push(t.path); }
-watch(route, r => { const t = TABS.find(x => x.path === r.path); if (t) cave.TAB = t.id; }, { immediate: true });
+watch(route, r => {
+  const t = TABS.find(x => x.path === r.path);
+  if (t) cave.TAB = t.id;
+  else if (CARNET_ROUTES.includes(r.path)) cave.TAB = "carnet";
+}, { immediate: true });
 
 function onAvatar(ev) {
   const f = ev.target.files[0];

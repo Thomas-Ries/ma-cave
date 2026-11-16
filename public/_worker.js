@@ -537,6 +537,36 @@ export default {
     if (url.pathname === "/partage") return pagePartage(url.searchParams.get("b") || "");
     if (url.pathname === "/apropos") return pageApropos();
 
+    /* L'actu du vin : RSS Vitisphere (FR), repli Terre de Vins. Cache edge 6 h,
+       côté app : localStorage 6 h, hors ligne : dernier titre connu. */
+    if (url.pathname === "/api/actu") {
+      const SOURCES = [
+        { nom: "Vitisphere", url: "https://vitisphere.com/rss" },
+        { nom: "Terre de Vins", url: "https://www.terredevins.com/feed" }
+      ];
+      for (const s of SOURCES) {
+        try {
+          const r = await fetch(s.url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; MaCave/2.9)" }, cf: { cacheTtl: 21600, cacheEverything: true } });
+          if (!r.ok) continue;
+          const xml = await r.text();
+          for (const bloc of xml.split(/<item[\s>]/i).slice(1)) {
+            const t = (bloc.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i) || [])[1];
+            const l = (bloc.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i) || [])[1];
+            if (!t || !l) continue;
+            const d = (bloc.match(/<pubDate>([\s\S]*?)<\/pubDate>/i) || [])[1] || "";
+            let age = "";
+            const ts = d ? Date.parse(d) : NaN;
+            if (!isNaN(ts)) {
+              const heures = Math.max(0, Math.round((Date.now() - ts) / 3600000));
+              age = heures < 1 ? "à l'instant" : heures < 24 ? "il y a " + heures + " h" : "il y a " + Math.round(heures / 24) + " j";
+            }
+            return json({ ok: true, titre: t.trim(), url: l.trim(), source: s.nom, date: d, age });
+          }
+        } catch {}
+      }
+      return json({ ok: false, error: "actu indisponible" }, 502);
+    }
+
     if (url.pathname === "/api/avatar") {
       if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", AVATAR_TITLE, AVATAR_PROP);
       if (request.method === "POST") return metaPost(request, env, AVATAR_TITLE, AVATAR_PROP, s => s.startsWith("data:image"));

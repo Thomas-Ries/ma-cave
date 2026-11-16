@@ -10,6 +10,7 @@ watch(() => props.open, v => cave.overlay("filtres", v));
 
 const s = cave;
 const list = cave.visible;
+const APOGEES = [{ v: "", t: "Toutes" }, { v: "boire", t: "À boire" }, { v: "bientot", t: "Bientôt" }, { v: "passe", t: "Passées" }];
 </script>
 
 <template>
@@ -38,6 +39,12 @@ const list = cave.visible;
           </select>
         </div>
         <div>
+          <p class="text-[10px] text-muted uppercase tracking-widest mb-1.5">Apogée</p>
+          <div class="flex gap-2">
+            <button v-for="a in APOGEES" :key="a.v" @click="s.db.filters.apogee = a.v" class="flex-1 py-1.5 rounded-full text-xs border transition" :class="s.db.filters.apogee === a.v ? 'bg-accent text-white border-accent' : 'bg-white text-ink border-hairline'">{{ a.t }}</button>
+          </div>
+        </div>
+        <div>
           <p class="text-[10px] text-muted uppercase tracking-widest mb-1.5">Tri</p>
           <select :value="s.db.filters.tri" @change="s.db.filters.tri = $event.target.value" class="w-full bg-white border border-hairline rounded-full px-3 py-2.5 text-sm">
             <option value="">Tri : défaut</option>
@@ -45,13 +52,15 @@ const list = cave.visible;
             <option value="apogee">Apogée ↑</option>
             <option value="nom">Nom</option>
             <option value="millesime">Millésime ↓</option>
+            <option value="millesime_asc">Millésime ↑</option>
+            <option value="region">Région</option>
             <option value="prix">Prix ↓</option>
             <option value="format">Format</option>
           </select>
         </div>
       </div>
       <div class="flex gap-3 mt-5">
-        <button @click="s.db.filters.cat = 'Toutes'; s.db.filters.cave = 'Toutes'; s.db.filters.region = 'Toutes'; s.db.filters.tri = ''; s.apogeeFiltre = false; s.save()" class="flex-1 py-2.5 rounded-full bg-white border border-hairline text-sm">Réinitialiser</button>
+        <button @click="s.db.filters.cat = 'Toutes'; s.db.filters.cave = 'Toutes'; s.db.filters.region = 'Toutes'; s.db.filters.tri = ''; s.db.filters.apogee = ''; s.apogeeFiltre = false; s.save()" class="flex-1 py-2.5 rounded-full bg-white border border-hairline text-sm">Réinitialiser</button>
         <button @click="emit('close')" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Afficher {{ list.length }} réf.</button>
       </div>
     </div>

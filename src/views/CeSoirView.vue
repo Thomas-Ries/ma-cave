@@ -6,7 +6,8 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useCave } from "../stores/cave.js";
-import { splitNom, regionTxt, tempService } from "../util.js";
+import { splitNom, regionTxt, tempService, fmtListeDate, joursAvant } from "../util.js";
+import ListesSheet from "../components/ListesSheet.vue";
 import { classeSoir, meteoActuelle } from "../lib/soir.js";
 import Ic from "../components/Ic.vue";
 
@@ -77,13 +78,35 @@ function frigoSoir() {
 }
 onMounted(() => initSoir());
 
-/* ===== Compteurs d'apogée → onglet Apogées pré-filtré ===== */
-function versApo(id) { cave.apoDemande = id; router.push("/apogees"); }
+/* ===== Rappel actif : UN seul, le plus urgent (soirée datée → frigo → apogées passées) ===== */
+const showListes = ref(false);
+const rappel = computed(() => {
+  const l = cave.listes.find(x => x.date && (x.ids || []).length && joursAvant(x.date) >= 0 && joursAvant(x.date) <= 2);
+  if (l) return { t: "Soirée « " + l.nom + " »", s: fmtListeDate(l.date) + " · " + l.ids.length + " bouteille" + (l.ids.length > 1 ? "s" : "") + " de côté", action: "listes" };
+  const frigo = cave.db.bouteilles.filter(b => b.quantite > 0 && b.cave === "Frigo");
+  if (frigo.length) return { t: frigo.length + " bouteille" + (frigo.length > 1 ? "s" : "") + " au frigo", s: "Pense à les sortir avant le repas", action: "frigo" };
+  const st = cave.apogeeStats;
+  if (st.passe > 0) return { t: st.passe + " apogée" + (st.passe > 1 ? "s" : "") + " passée" + (st.passe > 1 ? "s" : ""), s: "À boire sans attendre", action: "passe" };
+  return null;
+});
+function rappelGo() {
+  const a = rappel.value?.action;
+  if (!a) return;
+  if (a === "listes") { showListes.value = true; return; }
+  if (a === "frigo") { cave.db.filters.cave = "Frigo"; } else { cave.db.filters.apogee = "passe"; }
+  cave.cavePage = 1;
+  router.push("/cave");
+}
 
-/* ===== Rachats fréquents : les références les plus fournies de la cave ===== */
-const rachats = computed(() => cave.topRachats);
-function plusUn(b) { cave.plusUn(b); }
-function autreAchat() { cave.ouvrirAjout = true; router.push("/cave"); }
+/* ===== Ligne apogée compacte → cave pré-filtrée ===== */
+function versCaveApo(v) { cave.db.filters.apogee = v; cave.cavePage = 1; router.push("/cave"); }
+
+/* ===== Spiritueux du soir (carte dédiée) ===== */
+const spiritux = computed(() => cave.spiritueuxDuSoir);
+
+/* ===== L'actu du vin (RSS via le worker, cache 6 h) ===== */
+onMounted(() => cave.fetchActu());
+
 function ouvrirAjouter() { cave.ouvrirAjout = true; router.push("/cave"); }
 function versEnvies() { router.push("/envies"); }
 function versCave() { router.push("/cave"); }
@@ -109,6 +132,19 @@ const nbBouteilles = computed(() => cave.db.bouteilles.reduce((n, b) => n + (b.q
         <button @click="ouvrirAjouter" class="shrink-0 w-11 h-11 rounded-full bg-accent text-white flex items-center justify-center" title="Ajouter une bouteille"><Ic name="plus" cls="w-6 h-6" /></button>
       </div>
     </div>
+
+    <!-- Rappel actif : le plus urgent seulement -->
+    <button v-if="rappel" @click="rappelGo" class="mt-3 w-full flex items-stretch rounded-xl2 overflow-hidden bg-accent-soft border border-accent/30 card-sh">
+      <div class="w-[3px] self-stretch shrink-0 bg-accent"></div>
+      <div class="flex-1 min-w-0 py-3 pl-4 pr-2 flex items-center gap-2.5 text-left">
+        <Ic name="bell" cls="w-4 h-4 text-accent shrink-0" />
+        <span class="flex-1 min-w-0">
+          <span class="block text-xs font-medium text-accent">{{ rappel.t }}</span>
+          <span class="block text-[11px] text-muted mt-0.5 truncate">{{ rappel.s }}</span>
+        </span>
+        <Ic name="chevR" cls="w-4 h-4 text-accent shrink-0" />
+      </div>
+    </button>
 
     <!-- Carte vedette : suggestion du soir -->
     <div v-if="ceSoir" class="mt-3 rounded-xl2 border border-riesling bg-white overflow-hidden card-sh">
@@ -140,31 +176,34 @@ const nbBouteilles = computed(() => cave.db.bouteilles.reduce((n, b) => n + (b.q
       <p class="text-[11px] text-muted mt-1">Rien d'urgent à boire ce soir — sers ce qui te fait plaisir.</p>
     </div>
 
-    <!-- Compteurs d'apogée -->
-    <div v-if="cave.apogeeStats.boire + cave.apogeeStats.bientot + cave.apogeeStats.passe > 0" class="flex gap-2 mt-3">
-      <button @click="versApo('boire')" class="flex-1 py-2 rounded-xl2 border border-riesling/60 bg-riesling/15 text-center">
-        <p class="font-serif text-lg leading-none text-riesling-ink">{{ cave.apogeeStats.boire }}</p>
-        <p class="text-[10px] text-muted mt-1">à boire</p>
-      </button>
-      <button @click="versApo('bientot')" class="flex-1 py-2 rounded-xl2 border border-gold/30 bg-gold/10 text-center">
-        <p class="font-serif text-lg leading-none text-gold">{{ cave.apogeeStats.bientot }}</p>
-        <p class="text-[10px] text-muted mt-1">bientôt</p>
-      </button>
-      <button @click="versApo('passe')" class="flex-1 py-2 rounded-xl2 border border-accent/30 bg-accent-soft text-center">
-        <p class="font-serif text-lg leading-none text-accent">{{ cave.apogeeStats.passe }}</p>
-        <p class="text-[10px] text-muted mt-1">passées</p>
-      </button>
+    <!-- Ligne apogée compacte : un coup d'œil, un tap vers la cave filtrée -->
+    <button v-if="cave.apogeeStats.boire + cave.apogeeStats.passe > 0" @click="versCaveApo('boire')" class="mt-3 w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl2 border border-riesling/50 bg-white card-sh">
+      <span class="text-xs font-medium text-left">Ce soir, sers plutôt…</span>
+      <span class="text-[11px] text-muted text-right shrink-0">{{ cave.apogeeStats.boire }} à boire<span v-if="cave.apogeeStats.passe"> · {{ cave.apogeeStats.passe }} passée{{ cave.apogeeStats.passe > 1 ? 's' : '' }}</span></span>
+    </button>
+
+    <!-- Spiritueux du soir : liseré chartreuse, jamais dans la vedette -->
+    <div v-if="spiritux.length" class="mt-3 rounded-xl2 border border-chartreuse/60 bg-white overflow-hidden card-sh">
+      <div class="flex items-stretch">
+        <div class="w-[3px] self-stretch shrink-0 bg-chartreuse"></div>
+        <div class="flex-1 min-w-0 p-3.5">
+          <p class="text-[10px] text-chartreuse uppercase tracking-widest">Pour l'apéro ou le digestif</p>
+          <button @click="cave.openFiche(spiritux[0].id)" class="text-left w-full mt-0.5">
+            <p class="font-serif text-[16px] leading-snug truncate">{{ splitNom(spiritux[0]).domaine }}</p>
+            <p class="text-[11px] text-muted mt-0.5 truncate">{{ [spiritux[0].specificite, regionTxt(spiritux[0])].filter(Boolean).join(' · ') }} · ×{{ spiritux[0].quantite }}</p>
+          </button>
+          <p v-if="spiritux[1]" class="text-[10px] text-muted mt-1 truncate">Ou : {{ splitNom(spiritux[1]).domaine }} · ×{{ spiritux[1].quantite }}</p>
+          <button @click="cave.openFiche(spiritux[0].id)" class="mt-2.5 w-full py-2 rounded-xl2 border border-chartreuse/40 text-chartreuse text-[11px]">Ouvrir</button>
+        </div>
+      </div>
     </div>
 
-    <!-- Rachats fréquents -->
-    <p class="mt-5 mb-2 text-[10px] text-muted uppercase tracking-widest">Un achat à rentrer ?</p>
-    <div class="flex gap-1.5 flex-wrap">
-      <button v-for="b in rachats" :key="b.id" @click="plusUn(b)" class="px-3 py-2 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5 active:scale-95 transition-transform" :title="'Ajouter une ' + b.nom + ' à la cave'">
-        <span class="max-w-[150px] truncate">{{ splitNom(b).domaine }}</span>
-        <span class="font-semibold text-accent">+1</span>
-      </button>
-      <button @click="autreAchat" class="px-3 py-2 rounded-full border border-dashed border-hairline bg-white text-xs text-muted">Autre…</button>
-    </div>
+    <!-- L'actu du vin : RSS réel, un titre, une source -->
+    <a v-if="cave.actu" :href="cave.actu.url" target="_blank" rel="noopener" class="mt-3 block rounded-xl2 border border-hairline bg-white p-3.5 card-sh">
+      <p class="text-[10px] text-muted uppercase tracking-widest">L'actu du vin</p>
+      <p class="font-serif text-sm mt-1 leading-snug">{{ cave.actu.titre }}</p>
+      <p class="text-[10px] text-muted mt-1.5">{{ cave.actu.source }}<span v-if="cave.actu.age"> · {{ cave.actu.age }}</span></p>
+    </a>
 
     <!-- Raccourci cave -->
     <div class="border-t border-hairline mt-5 pt-4 flex items-center justify-between">
@@ -174,5 +213,7 @@ const nbBouteilles = computed(() => cave.db.bouteilles.reduce((n, b) => n + (b.q
       </div>
       <button @click="versCave" class="px-4 py-2 rounded-full border border-hairline bg-white text-xs text-accent flex items-center gap-1.5">Ouvrir <Ic name="chevR" cls="w-3.5 h-3.5" /></button>
     </div>
+
+    <ListesSheet :open="showListes" @close="showListes = false" @to-cave="id => { cave.db.filters.q = ''; router.push('/cave'); }" />
   </section>
 </template>

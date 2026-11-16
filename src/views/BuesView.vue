@@ -17,7 +17,10 @@ const noteMoy = computed(() => {
   <section class="p-4">
     <p class="text-[10px] text-muted uppercase tracking-widest">Ma Cave</p>
     <h1 class="font-serif text-2xl leading-tight">Bues</h1>
-    <p class="text-xs text-muted mt-0.5">{{ bues.length }} bouteille{{ bues.length > 1 ? 's' : '' }} bues<span v-if="noteMoy"> · note moyenne {{ noteMoy }}/100</span></p>
+    <div class="flex items-center justify-between gap-2">
+      <p class="text-xs text-muted mt-0.5">{{ bues.length }} bouteille{{ bues.length > 1 ? 's' : '' }} bues<span v-if="noteMoy"> · note moyenne {{ noteMoy }}/100</span></p>
+      <button @click="$router.push('/stats')" class="text-[11px] text-accent underline underline-offset-2 shrink-0">Voir les stats</button>
+    </div>
 
     <div v-if="bues.length" class="mt-4">
       <button v-for="h in bues" :key="h.id" @click="cave.buesFiche = h.id" class="w-full text-left bg-white border border-hairline rounded-xl2 p-3 mb-2 flex items-center gap-3">

@@ -24,6 +24,28 @@ const onAvatar = inject("onAvatar");
 
 const profilMenu = ref(false);
 const showProfil = ref(false);
+/* Cloche : notifications d'apogée (déménagée de l'ex-onglet Apogées) */
+async function toggleCloche() {
+  if (!cave.apoAlerte && typeof Notification !== "undefined" && Notification.permission === "default") {
+    try { await Notification.requestPermission(); } catch {}
+  }
+  cave.apoAlerte = !cave.apoAlerte;
+  cave.toast(cave.apoAlerte ? "Notifications d'apogée activées" : "Notifications d'apogée coupées");
+}
+/* Ligne d'état + badge Filtres : résumé lisible du tri et des filtres actifs */
+const TRI_LIB = { "": "défaut", recent: "récentes", apogee: "apogée ↑", nom: "nom", millesime: "Millésime ↓", millesime_asc: "Millésime ↑", prix: "prix ↓", format: "format", region: "région" };
+const triLibelle = computed(() => TRI_LIB[cave.db.filters.tri || ""] || "défaut");
+const filtresParts = computed(() => {
+  const f = cave.db.filters; const parts = [];
+  if (f.apogee) parts.push({ boire: "à boire", bientot: "bientôt", passe: "passées" }[f.apogee] || f.apogee);
+  if (cave.apogeeFiltre) parts.push("à boire cette année");
+  if (f.cat && f.cat !== "Toutes") parts.push(f.cat);
+  if (f.cave && f.cave !== "Toutes") parts.push(f.cave);
+  if (f.region && f.region !== "Toutes") parts.push(f.region);
+  if (f.q) parts.push("« " + f.q + " »");
+  return parts;
+});
+const filtresLibelle = computed(() => filtresParts.value.join(" · "));
 function switchProfil(id) {
   if (id === cave.PROFIL) { profilMenu.value = false; return; }
   cave.useProfil(id);
@@ -353,6 +375,9 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
         <p class="text-xs text-muted mt-0.5">{{ cave.visible.length }} référence{{ cave.visible.length > 1 ? 's' : '' }} · {{ visBouteilles }} bouteille{{ visBouteilles > 1 ? 's' : '' }}<span v-if="filtresActifs" class="text-accent"> · sur {{ totalRefs }}</span></p>
       </div>
       <div class="flex items-center gap-2 shrink-0">
+        <button @click="toggleCloche" class="relative shrink-0 w-11 h-11 rounded-full border flex items-center justify-center" :class="cave.apoAlerte ? 'border-accent text-accent bg-accent/10' : 'border-hairline text-muted'" title="Activer les notifications d'apogée">
+          <Ic name="bell" cls="w-5 h-5" /><span v-if="cave.apoAlerte" class="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-accent"></span>
+        </button>
         <button @click="router.push('/envies')" class="relative w-11 h-11 rounded-full bg-white border border-hairline text-accent flex items-center justify-center" title="Envies d'achat (notes prises chez le caviste)">
           <Ic name="note" cls="w-5 h-5" />
           <span v-if="cave.nbEnvies" class="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-white text-[10px] flex items-center justify-center">{{ cave.nbEnvies }}</span>
@@ -442,7 +467,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
       <div class="flex items-center pr-3">
         <span class="min-w-[30px] h-[30px] rounded-full flex items-center justify-center font-serif" :class="cave.apogeeFiltre ? 'bg-white text-accent' : 'bg-riesling text-ink'">{{ cave.apogeeStats.boire }}</span>
       </div>
-      <button @click="cave.apoAlerte = null; cave.TAB = 'apogees'; $router.push('/apogees')" class="px-3 text-[11px] shrink-0 self-center" :class="cave.apogeeFiltre ? 'text-white underline underline-offset-2' : 'text-accent underline underline-offset-2'">Apogées</button>
+      <button @click="cave.db.filters.apogee = cave.db.filters.apogee === 'passe' ? '' : 'passe'; cave.cavePage = 1" class="px-3 text-[11px] shrink-0 self-center" :class="(cave.db.filters.apogee === 'passe' || cave.apogeeFiltre) ? 'text-white underline underline-offset-2' : 'text-accent underline underline-offset-2'">{{ cave.db.filters.apogee === 'passe' ? 'Passées' : 'Passées ?' }}</button>
     </div>
 
     <!-- Recherche + filtres + dense -->
@@ -451,13 +476,19 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
         <input v-model="search" placeholder="Rechercher un vin, un cépage, une région…" class="w-full bg-white border border-hairline rounded-full pl-10 pr-4 py-2 text-sm" @input="cave.db.filters.q = search" />
         <Ic name="search" cls="w-4 h-4 absolute left-3.5 top-2.5 text-muted" />
       </div>
-      <button @click="showFiltres = true" class="shrink-0 px-3 rounded-full border text-xs flex items-center gap-1.5" :class="cave.db.filters && Object.keys(cave.db.filters).length ? 'border-accent text-accent' : 'border-hairline text-muted'">
+      <button @click="showFiltres = true" class="relative shrink-0 px-3 rounded-full border text-xs flex items-center gap-1.5" :class="filtresParts.length ? 'border-accent text-accent' : 'border-hairline text-muted'">
         <Ic name="sliders" cls="w-4 h-4" /> Filtres
+        <span v-if="filtresParts.length" class="ml-0.5 px-1.5 rounded-full bg-accent text-white text-[10px]">{{ filtresParts.length }}</span>
       </button>
       <button @click="cave.setDense(!cave.denseOn)" class="shrink-0 px-3 rounded-full border text-xs flex items-center gap-1.5" :class="cave.denseOn ? 'border-accent text-accent' : 'border-hairline text-muted'" :title="cave.denseOn ? 'Mode cartes' : 'Mode dense'">
         <Ic :name="cave.denseOn ? 'grid' : 'rows'" cls="w-4 h-4" />
       </button>
     </div>
+
+    <!-- Ligne d'état : tri + filtres actifs, discret -->
+    <p v-if="triLibelle || filtresLibelle" class="mt-1.5 text-[10px] text-muted">
+      Tri : {{ triLibelle || 'défaut' }}<span v-if="filtresLibelle"> · {{ filtresLibelle }}</span> · {{ cave.visible.length }} réf.
+    </p>
 
     <!-- Liste -->
     <div v-if="pageItems.length" class="mt-3">
@@ -496,6 +527,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <div class="flex flex-col items-center gap-1 shrink-0">
             <span v-if="b.quantite > 1" class="text-xs text-muted tabular-nums">×{{ b.quantite }}</span>
             <button @click.stop="cave.drink(b.id)" class="px-3 py-1.5 rounded-full bg-riesling/40 border border-riesling text-xs flex items-center gap-1" title="Boire une bouteille"><Ic name="glass" cls="w-4 h-4" /></button>
+            <button @click.stop="cave.plusUn(b)" class="px-2 py-1.5 rounded-full border border-hairline text-[11px] text-accent" :title="'Racheter une ' + b.nom" :class="cave.db.filters.etage === 'Spiritueux' ? 'border-chartreuse/40 text-chartreuse' : ''">+1</button>
           </div>
         </div>
       </template>

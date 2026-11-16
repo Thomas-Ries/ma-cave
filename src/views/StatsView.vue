@@ -55,6 +55,7 @@ const mill = computed(() => {
   <section class="p-4">
     <p class="text-[10px] text-muted uppercase tracking-widest">Ma Cave</p>
     <h1 class="font-serif text-2xl leading-tight">Stats</h1>
+    <button @click="$router.push('/bues')" class="text-[11px] text-accent underline underline-offset-2">← Ce que j'ai bu</button>
 
     <div class="grid grid-cols-2 gap-2 mt-4">
       <div class="bg-white border border-hairline rounded-xl2 p-4">

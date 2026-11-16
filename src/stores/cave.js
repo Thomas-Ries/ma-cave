@@ -16,13 +16,15 @@ function pinHash(s) { let x = 5381; for (const c of s) x = ((x * 33) ^ c.charCod
 export const useCave = defineStore("cave", {
   state: () => ({
     PROFIL: "thomas",
-    db: { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout" } },
+    db: { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" } },
     denseOn: false,
     TAB: "cave",
     cavePage: 1,
     apoAlerte: null,        /* null | "boire" | "bientot" | "passe" (onglet Apogées) */
     apogeeFiltre: false,    /* filtre « à boire cette année » (bandeau Cave) */
     derniereRaison: null, /* raison humaine du dernier échec de synchro */
+    actu: null,             /* dernière actu du vin (RSS via le worker) */
+    actuErreur: false,
     soirVersion: 0,         /* incrémenté quand les préférences du soir changent */
     fichesOuvertes: [],
     ficheEdit: false,
@@ -32,7 +34,6 @@ export const useCave = defineStore("cave", {
     askConf: null,          /* popin de confirmation maison */
     enviePrefill: null,     /* article d'envie → pré-remplir le formulaire d'ajout au retour sur la Cave */
     ouvrirAjout: false,     /* demande d'ouverture du formulaire d'ajout depuis l'onglet Ce soir */
-    apoDemande: null,       /* filtre à appliquer à l'onglet Apogées à l'arrivée depuis Ce soir */
     toasts: [],
     busy: 0,                /* synchro en cours (pastille loader) */
     darkOn: false,          /* mode sombre « cave » (persisté par appareil) */
@@ -54,14 +55,14 @@ export const useCave = defineStore("cave", {
     /* Envies d'achat : bouteilles notées mais pas encore achetées */
     nbEnvies: (s) => (s.db.envies || []).reduce((n, e) => n + (e.items || []).filter(i => !i.ajouteLe).length, 0),
 
-    /* Rachats fréquents (onglet Ce soir) : les références les mieux fournies de la cave —
-       un rachat réel est presque toujours une référence qu'on possède déjà en nombre. */
-    topRachats(s) {
+    /* Spiritueux du soir (onglet Ce soir) : les plus rares d'abord —
+       on met en avant ce qu'il ne faudrait pas oublier, pas le fond de rayon. */
+    spiritueuxDuSoir(s) {
       return s.db.bouteilles
-        .filter(b => b.quantite > 0)
+        .filter(b => b.quantite > 0 && s.estSpiritueux(b))
         .slice()
-        .sort((a, z) => z.quantite - a.quantite || (a.nom || "").localeCompare(z.nom || ""))
-        .slice(0, 3);
+        .sort((a, z) => a.quantite - z.quantite || (a.nom || "").localeCompare(z.nom || "", "fr"))
+        .slice(0, 2);
     },
     listeQ: () => (l, bid) => { const q = (l.qtes || {})[bid]; return q > 1 ? q : 1; },
     /* Caves déjà saisies, pour les suggestions du formulaire d'ajout */
@@ -96,6 +97,7 @@ export const useCave = defineStore("cave", {
       if (f.cat !== "Toutes") list = list.filter(b => (b.type === "Spiritueux" ? "Spiritueux" : b.categorie) === f.cat || b.categorie === f.cat);
       if (f.cave && f.cave !== "Toutes") list = list.filter(b => (b.cave || "") === f.cave);
       if (this.apogeeFiltre) list = list.filter(b => this.enApogee(b, year));
+      if (f.apogee && f.apogee !== "Toutes") list = list.filter(b => this.statutApo(b, year) === f.apogee);
       if (f.region && f.region !== "Toutes") list = list.filter(b => (b.region || "") === f.region);
       if (f.q) {
         const q = f.q.toLowerCase();
@@ -106,6 +108,7 @@ export const useCave = defineStore("cave", {
       else if (tri === "recent") list.sort((a, b) => ((b.creeLe || b.modifLe || "") > (a.creeLe || a.modifLe || "") ? 1 : -1));
       else if (tri === "nom") list.sort((a, b) => (a.nom || "").localeCompare(b.nom || "", "fr"));
       else if (tri === "millesime") list.sort((a, b) => (b.millesime ?? -1) - (a.millesime ?? -1));
+      else if (tri === "millesime_asc") list.sort((a, b) => (a.millesime ?? 9999) - (b.millesime ?? 9999));
       else if (tri === "prix") list.sort((a, b) => (b.prix ?? 0) - (a.prix ?? 0));
       else if (tri === "format") list.sort((a, b) => (FORMATS.indexOf(a.format || "Bouteille (75 cl)") - FORMATS.indexOf(b.format || "Bouteille (75 cl)")) || (a.nom || "").localeCompare(b.nom || "", "fr"));
       else if (tri === "region") list.sort((a, b) => (a.region || "").localeCompare(b.region || "", "fr") || (a.nom || "").localeCompare(b.nom || "", "fr"));
@@ -173,11 +176,12 @@ export const useCave = defineStore("cave", {
     load() {
       let db = null;
       try { const raw = localStorage.getItem(this.pKeys.db); db = raw ? JSON.parse(raw) : null; } catch { db = null; }
-      if (!db || !Array.isArray(db.bouteilles)) db = { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout" } };
-      db.filters = db.filters || { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout" };
+      if (!db || !Array.isArray(db.bouteilles)) db = { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" } };
+      db.filters = db.filters || { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" };
       db.filters.tri = db.filters.tri || "";
       db.filters.region = db.filters.region || "Toutes";
       db.filters.etage = db.filters.etage || "Tout"; /* étage de cave : Vin / Spiritueux / Tout */
+      db.filters.apogee = db.filters.apogee || ""; /* filtre apogée : "" / boire / bientot / passe */
       if (!Array.isArray(db.listes)) db.listes = [];
       for (const l of db.listes) { l.qtes = l.qtes || {}; l.ids = l.ids || []; l.ext = l.ext || []; }
       db.envies = db.envies || [];
@@ -312,6 +316,35 @@ export const useCave = defineStore("cave", {
       const f = b.apoFin ?? (b.apoDebut != null ? b.apoDebut : b.apoAuto?.fin);
       if (d == null) return false;
       return year >= d && year <= (f ?? d);
+    },
+
+    /* Statut d'apogée : passe / boire / bientot / garder — même logique que l'ex-onglet Apogées.
+       Sert au filtre « Apogée » de la feuille Filtres et à la ligne compacte de Ce soir. */
+    statutApo(b, year) {
+      const d = b.apoDebut ?? b.apoAuto?.debut;
+      if (d == null || this.estSpiritueux(b)) return "garder";
+      const f = b.apoFin ?? (b.apoDebut != null ? b.apoDebut : b.apoAuto?.fin);
+      if (year > (f ?? d)) return "passe";
+      if (year >= d) return "boire";
+      if (d - year <= 2) return "bientot";
+      return "garder";
+    },
+
+    /* ---------- L'actu du vin (RSS via le worker, cache local 6 h) ---------- */
+    async fetchActu(force) {
+      const CLE = this.pKeys.db + "-actu";
+      try {
+        const cache = JSON.parse(localStorage.getItem(CLE) || "null");
+        if (!force && cache && Date.now() - cache.ts < 6 * 3600 * 1000) { this.actu = cache.data; return; }
+      } catch {}
+      try {
+        const r = await fetch("/api/actu");
+        if (!r.ok) throw new Error("actu " + r.status);
+        const data = await r.json();
+        if (!data || !data.titre) throw new Error("actu vide");
+        this.actu = data; this.actuErreur = false;
+        try { localStorage.setItem(CLE, JSON.stringify({ ts: Date.now(), data })); } catch {}
+      } catch { this.actuErreur = true; }
     },
 
     /* ---------- Fiches ---------- */
@@ -962,7 +995,7 @@ export const useCave = defineStore("cave", {
       let corps = "";
       if (st.boire > 0) corps += st.boire + " bouteille" + (st.boire > 1 ? "s" : "") + " dans sa fenêtre d'apogée cette année";
       if (st.passe > 0) corps += (corps ? " · " : "") + st.passe + " passée" + (st.passe > 1 ? "s" : "") + " l'apogée";
-      if (corps) notifie("Ma Cave — apogées", corps + ". Ouvre l'onglet Apogées.", "ma-cave-apogee");
+      if (corps) notifie("Ma Cave — apogées", corps + ". Ouvre ta cave, filtre Apogée.", "ma-cave-apogee");
       try { localStorage.setItem(key, JSON.stringify({ jour: today })); } catch {}
     },
     notifListes() {
