@@ -1131,3 +1131,118 @@ export const useCave = defineStore("cave", {
 
     /* ---------- Backup ---------- */
     backupJSON() {
+      return JSON.stringify({ app: "ma-cave", profil: this.PROFIL, date: new Date().toISOString(), bouteilles: this.db.bouteilles, bues: this.db.bues, listes: this.db.listes, envies: this.db.envies || [] }, null, 2);
+    },
+    exportCSV() {
+      /* En-têtes = colonnes reconnues par l'import → la sauvegarde est réimportable tel quel */
+      const esc = v => { if (v == null || v === "") return ""; const s = String(v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+      const cols = ["nom", "type", "categorie", "region", "cepage", "appellation", "millesime", "apoDebut", "apoFin", "quantite", "prix", "cave", "cuvee", "format", "statut", "commentaire", "pays"];
+      return [cols.join(";"), ...this.db.bouteilles.map(b => cols.map(c => esc(b[c])).join(";"))].join("\r\n");
+    },
+    downloadBackup(manuel) {
+      try {
+        const light = JSON.parse(this.backupJSON());
+        light.bouteilles = light.bouteilles.map(b => ({ ...b, photo: null }));
+        light.envies = (light.envies || []).map(e => ({ ...e, items: (e.items || []).map(i => ({ ...i, photos: [] })) }));
+        const key = this.pKeys.db + "-snaps";
+        let snaps = [];
+        try { snaps = JSON.parse(localStorage.getItem(key) || "[]"); } catch {}
+        snaps = [light, ...snaps.filter(x => x.date !== light.date)].slice(0, 3);
+        try { localStorage.setItem(key, JSON.stringify(snaps)); } catch {}
+        const d = new Date();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob(["\ufeff" + this.exportCSV()], { type: "text/csv;charset=utf-8" }));
+        a.download = "ma-cave-" + this.PROFIL + "-" + d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + ".csv";
+        document.body.appendChild(a); a.click(); a.remove();
+        this.toast(manuel ? "Sauvegarde CSV téléchargée — réimportable via Importer" : "Sauvegarde hebdo CSV téléchargée — réimportable via Importer");
+      } catch { this.toast("Sauvegarde impossible : stockage plein ?"); }
+    },
+    exportBackupJSON() {
+      /* Sauvegarde JSON complète : tout le profil, photos allégées (taille raisonnable) */
+      const light = JSON.parse(this.backupJSON());
+      light.avatar = this.avatarDe(this.PROFIL) || null;   /* la photo de profil est dans le backup */
+      light.bouteilles = light.bouteilles.map(b => ({ ...b, photo: b.photo && b.photo.length < 300000 ? b.photo : null }));
+      const d = new Date();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(light)], { type: "application/json" }));
+      a.download = "ma-cave-" + this.PROFIL + "-" + d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + ".json";
+      document.body.appendChild(a); a.click(); a.remove();
+      this.toast("Sauvegarde JSON téléchargée — restaure tout le profil");
+    },
+    autoBackup() {
+      const key = this.pKeys.db + "-lastbackup";
+      const last = +(localStorage.getItem(key) || 0);
+      if (Date.now() - last > 7 * 24 * 3600 * 1000) {
+        if (this.db.bouteilles.length) this.downloadBackup(false);
+        try { localStorage.setItem(key, String(Date.now())); } catch {}
+      }
+    },
+    restoreBackup(obj) {
+      if (!obj || !Array.isArray(obj.bouteilles)) throw new Error("Fichier de sauvegarde invalide");
+      let ajoutes = 0, maj = 0;
+      for (const nb of obj.bouteilles) {
+        if (!nb || !nb.nom) continue;
+        const b = { ...nb, photo: nb.photo || null };
+        if (!b.apoAuto) { const est = estimeApogee(b); if (est) { b.apoAuto = est; b.apoRegle = est.regle; } }
+        const ex = this.db.bouteilles.find(x => importKey(x) === importKey(b));
+        if (ex) {
+          for (const f of ["quantite", "prix", "categorie", "region", "pays", "cepage", "cuvee", "appellation", "format", "commentaire", "statut", "millesime", "note", "apoDebut", "apoFin"]) if (b[f] != null && b[f] !== "") ex[f] = b[f];
+          maj++;
+        } else { this.db.bouteilles.push(b); ajoutes++; }
+      }
+      for (const nb of (obj.bues || [])) {
+        if (nb && nb.id && !(this.db.bues || []).some(x => x.id === nb.id)) this.db.bues.push(nb);
+      }
+      if (Array.isArray(obj.listes)) {
+        for (const nl of obj.listes) if (nl && nl.id && !this.listes.some(l => l.id === nl.id)) this.listes.push({ ...nl, ids: nl.ids || [], qtes: nl.qtes || {} });
+      }
+      if (Array.isArray(obj.envies)) {
+        this.db.envies = this.db.envies || [];
+        for (const ne of obj.envies) if (ne && ne.id && !this.db.envies.some(e => e.id === ne.id)) this.db.envies.push({ ...ne, items: ne.items || [] });
+      }
+      if (obj.avatar) { try { this.setAvatar(obj.avatar); this.syncAvatar(); } catch {} }
+      this.save();
+      return { ajoutes, maj };
+    },
+
+    /* ---------- Rappels (notifications locales) ---------- */
+    notifAutorisees() { return typeof Notification !== "undefined" && Notification.permission === "granted"; },
+    notifApogees() {
+      if (!this.notifAutorisees()) return;
+      const key = this.pKeys.db + "-notif";
+      const today = new Date().toISOString().slice(0, 10);
+      let vu = null; try { vu = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
+      if (vu && vu.jour === today) return;
+      const st = this.apogeeStats;
+      let corps = "";
+      if (st.boire > 0) corps += st.boire + " bouteille" + (st.boire > 1 ? "s" : "") + " dans sa fenêtre d'apogée cette année";
+      if (st.passe > 0) corps += (corps ? " · " : "") + st.passe + " passée" + (st.passe > 1 ? "s" : "") + " l'apogée";
+      if (corps) notifie("Ma Cave — apogées", corps + ". Ouvre ta cave, filtre Apogée.", "ma-cave-apogee");
+      try { localStorage.setItem(key, JSON.stringify({ jour: today })); } catch {}
+    },
+    notifListes() {
+      if (!this.notifAutorisees()) return;
+      const key = this.pKeys.db + "-notiflistes";
+      const today = new Date().toISOString().slice(0, 10);
+      let vu = null; try { vu = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
+      if (vu && vu.jour === today) return;
+      const { joursAvant, fmtListeDate } = require0();
+      const msgs = [];
+      for (const l of this.listes) {
+        if (!l.date || !(l.ids || []).length) continue;
+        const d = joursAvant(l.date);
+        if (d === 2 || d === 1 || d === 0) msgs.push(`« ${l.nom} » dans ${d === 0 ? "le jour J" : d + " jour" + (d > 1 ? "s" : "")} — mets ${l.ids.length} bouteille${l.ids.length > 1 ? "s" : ""} au frais`);
+      }
+      for (const l of this.listes) {
+        const n = this.listePostPending(l) ? this.listeResteEnCave(l) : 0;
+        if (n) msgs.push(`« ${l.nom} » c'était le ${fmtListeDate(l.date)} — as-tu bu les ${n} bouteille${n > 1 ? "s" : ""} mise${n > 1 ? "s" : ""} de côté ?`);
+      }
+      for (const m of msgs) notifie("Ma Cave — à préparer", m, "ma-cave-listes");
+      try { localStorage.setItem(key, JSON.stringify({ jour: today })); } catch {}
+      if (msgs.length) this.toast("Des bouteilles à préparer — regarde tes Listes");
+    },
+  },
+});
+
+/* utilitaires notifs (sans import circulaire) */
+function require0() { return { joursAvant: iso => { const d = new Date(iso + "T12:00:00"); const n = Math.ceil((d - Date.now()) / 86400000); return n >= 0 ? n : null; }, fmtListeDate: iso => { try { return new Date(iso + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); } catch { return iso; } } }; }
