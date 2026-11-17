@@ -130,7 +130,7 @@ function supprimer() {
   });
 }
 
-function boire() { const id = b.value.id; cave.closeFiche(); cave.drink(id); }
+function boire() { const id = b.value.id; cave.closeFiche(); cave.boireDemande(id); }
 
 function newPhoto(ev) {
   const f = ev.target.files[0];

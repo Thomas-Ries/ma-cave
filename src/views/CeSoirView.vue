@@ -104,12 +104,9 @@ function versCaveApo(v) { cave.db.filters.apogee = v; cave.cavePage = 1; router.
 /* ===== Spiritueux du soir (carte dédiée) ===== */
 const spiritux = computed(() => cave.spiritueuxDuSoir);
 
-/* ===== L'actu du vin (RSS via le worker, cache 6 h) ===== */
-onMounted(() => cave.fetchActu());
 
 function ouvrirAjouter() { cave.ouvrirAjout = true; router.push("/cave"); }
 function versEnvies() { router.push("/envies"); }
-function versCave() { router.push("/cave"); }
 
 /* ===== Compteurs de la cave ===== */
 const nbRefs = computed(() => cave.db.bouteilles.filter(b => b.quantite > 0).length);
@@ -152,7 +149,7 @@ const nbBouteilles = computed(() => cave.db.bouteilles.reduce((n, b) => n + (b.q
         <div class="w-[3px] self-stretch shrink-0 bg-riesling"></div>
         <div class="flex-1 min-w-0 py-3 pl-4 pr-2">
           <div class="flex items-center justify-between gap-2">
-            <p class="text-[10px] text-riesling-ink uppercase tracking-widest">{{ meteo ? 'Il fait ' + meteo.t + ' °C — sers plutôt…' : 'Ce soir, sers plutôt…' }}</p>
+            <p class="text-[10px] text-riesling-ink uppercase tracking-widest min-w-0 truncate">{{ meteo ? `Il fait ${meteo.t}° — sers plutôt…` : 'Ce soir, sers plutôt…' }}</p>
             <span v-if="ceSoirTemp" class="text-[10px] text-muted shrink-0">{{ ceSoirTemp.c }} · {{ ceSoirTemp.t }}</span>
             <button @click="fermerSoir" class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink" title="Masquer jusqu'à demain"><Ic name="x" cls="w-3.5 h-3.5" /></button>
           </div>
@@ -166,7 +163,7 @@ const nbBouteilles = computed(() => cave.db.bouteilles.reduce((n, b) => n + (b.q
           <div class="flex gap-2 mt-3">
             <button @click="sortirSoir" class="flex-1 py-2.5 rounded-xl2 bg-accent text-white text-[11px] flex items-center justify-center gap-1.5"><Ic name="bottleEmpty" cls="w-3.5 h-3.5" /> Sortir</button>
             <button @click="frigoSoir" class="flex-1 py-2.5 rounded-xl2 border border-accent/40 text-accent text-[11px] flex items-center justify-center gap-1.5"><Ic name="snow" cls="w-3.5 h-3.5" /> Au frigo</button>
-            <button @click="pickSoir(true)" class="flex-1 py-2.5 rounded-xl2 border border-gold/60 text-gold text-[11px] flex items-center justify-center gap-1.5" title="Proposer une autre bouteille"><Ic name="sparkles" cls="w-3.5 h-3.5" /> Une autre idée</button>
+            <button @click="pickSoir(true)" class="flex-1 py-2.5 rounded-xl2 border border-gold/60 text-gold text-[11px] flex items-center justify-center gap-1.5" title="Proposer une autre bouteille"><Ic name="sparkles" cls="w-3.5 h-3.5" /> Autre idée</button>
           </div>
         </div>
       </div>
@@ -198,21 +195,6 @@ const nbBouteilles = computed(() => cave.db.bouteilles.reduce((n, b) => n + (b.q
       </div>
     </div>
 
-    <!-- L'actu du vin : RSS réel, un titre, une source -->
-    <a v-if="cave.actu" :href="cave.actu.url" target="_blank" rel="noopener" class="mt-3 block rounded-xl2 border border-hairline bg-white p-3.5 card-sh">
-      <p class="text-[10px] text-muted uppercase tracking-widest">L'actu du vin</p>
-      <p class="font-serif text-sm mt-1 leading-snug">{{ cave.actu.titre }}</p>
-      <p class="text-[10px] text-muted mt-1.5">{{ cave.actu.source }}<span v-if="cave.actu.age"> · {{ cave.actu.age }}</span></p>
-    </a>
-
-    <!-- Raccourci cave -->
-    <div class="border-t border-hairline mt-5 pt-4 flex items-center justify-between">
-      <div>
-        <p class="text-sm font-medium">Ta cave</p>
-        <p class="text-[11px] text-muted mt-0.5">{{ nbBouteilles }} bouteille{{ nbBouteilles > 1 ? 's' : '' }} · {{ nbRefs }} référence{{ nbRefs > 1 ? 's' : '' }}</p>
-      </div>
-      <button @click="versCave" class="px-4 py-2 rounded-full border border-hairline bg-white text-xs text-accent flex items-center gap-1.5">Ouvrir <Ic name="chevR" cls="w-3.5 h-3.5" /></button>
-    </div>
 
     <ListesSheet :open="showListes" @close="showListes = false" @to-cave="id => { cave.db.filters.q = ''; router.push('/cave'); }" />
   </section>

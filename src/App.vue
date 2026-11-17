@@ -9,6 +9,7 @@ import { verifierBiometrie, cleDe, biomometriePrete } from "./lib/face.js";
 import Ic from "./components/Ic.vue";
 import ProfilSheet from "./components/ProfilSheet.vue";
 import FicheModal from "./components/FicheModal.vue";
+import CombienModal from "./components/CombienModal.vue";
 import FicheBueModal from "./components/FicheBueModal.vue";
 
 const cave = useCave();
@@ -219,13 +220,14 @@ function onAvatar(ev) {
     <div class="w-16 h-16 rounded-full bg-accent text-white flex items-center justify-center mb-4 shadow-md"><Ic name="cave" cls="w-9 h-9" /></div>
     <h2 class="font-serif text-2xl mb-1">Ma Cave</h2>
     <p class="text-xs text-muted mb-8">Qui boit ce soir ?</p>
-    <div class="w-full max-w-xs space-y-3">
-      <button v-for="p in Object.values(cave.PROFILS)" :key="p.id" @click="choisirProfil(p.id)" class="w-full bg-white rounded-xl2 border border-hairline p-4 flex items-center gap-4 transition active:scale-[0.98]">
-        <img v-if="cave.avatarDe(p.id)" :src="cave.avatarDe(p.id)" alt="" class="w-14 h-14 rounded-full object-cover border border-hairline" />
-        <span v-else class="w-14 h-14 rounded-full bg-accent-soft text-accent flex items-center justify-center font-serif text-xl">{{ p.nom.slice(0, 1) }}</span>
-        <span class="font-serif text-lg">{{ p.nom }}</span>
-        <Ic v-if="cave.hasPin(p.id)" name="lock" cls="w-3.5 h-3.5 text-muted" />
-        <Ic name="chevR" cls="w-5 h-5 text-muted ml-auto" />
+    <div class="w-full max-w-xs flex flex-wrap justify-center gap-x-7 gap-y-4">
+      <button v-for="p in Object.values(cave.PROFILS)" :key="p.id" @click="choisirProfil(p.id)" class="flex flex-col items-center gap-2 transition active:scale-[0.97]">
+        <span class="relative">
+          <img v-if="cave.avatarDe(p.id)" :src="cave.avatarDe(p.id)" alt="" class="w-[76px] h-[76px] rounded-full object-cover border border-hairline shadow-sm" />
+          <span v-else class="w-[76px] h-[76px] rounded-full bg-accent-soft border border-hairline text-accent flex items-center justify-center font-serif text-2xl shadow-sm">{{ p.nom.slice(0, 1) }}</span>
+          <span v-if="cave.hasPin(p.id)" class="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-white border border-hairline flex items-center justify-center"><Ic name="lock" cls="w-3 h-3 text-muted" /></span>
+        </span>
+        <span class="text-sm font-medium">{{ p.nom }}</span>
       </button>
     </div>
   </div>
@@ -253,6 +255,7 @@ function onAvatar(ev) {
     </nav>
 
     <FicheModal />
+    <CombienModal />
     <FicheBueModal />
     <ProfilSheet :open="showProfil" :on-avatar="onAvatar" @close="showProfil = false" />
 

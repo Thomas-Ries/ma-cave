@@ -305,7 +305,7 @@ const sw = ref({ id: null, x: 0, dx: 0 });
 function swipeStart(b, ev) { sw.value = { id: b.id, x: ev.clientX, dx: 0 }; }
 function swipeMove(ev) { if (sw.value.id != null) sw.value.dx = ev.clientX - sw.value.x; }
 function swipeEnd(b) {
-  if (sw.value.id === b.id && sw.value.dx < -60) cave.drink(b.id);
+  if (sw.value.id === b.id && sw.value.dx < -60) cave.boireDemande(b.id);
   sw.value = { id: null, x: 0, dx: 0 };
 }
 
@@ -394,7 +394,6 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
       <button @click="livreDeCave" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Livre de cave (imprimable)"><Ic name="book" cls="w-3.5 h-3.5" /> Livre</button>
       <button @click="showListes = true" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Listes d'envies et réservations"><Ic name="heart" cls="w-3.5 h-3.5" /> Listes<span v-if="cave.nbReservees" class="ml-0.5 px-1.5 rounded-full bg-gold text-white">{{ cave.nbReservees }}</span></button>
       <button @click="showFichiers = true" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Importer / exporter : Excel, CSV, JSON"><Ic name="trayUp" cls="w-3.5 h-3.5 text-green" /> Fichiers</button>
-      <button @click="cave.pullAll()" class="shrink-0 px-3 py-1.5 rounded-full border border-hairline bg-white text-xs flex items-center gap-1.5" title="Récupérer les données Notion"><Ic name="cloudDown" cls="w-3.5 h-3.5" /> Récupérer</button>
       <button v-if="canInstall" @click="installer" class="shrink-0 px-3 py-1.5 rounded-full bg-accent text-white text-xs flex items-center gap-1.5" title="Installer Ma Cave sur cet appareil"><Ic name="grid" cls="w-3.5 h-3.5" /> Installer l'app</button>
     </div>
     <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" class="hidden" @change="onImportFile" />
@@ -496,7 +495,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           </div>
           <div class="flex flex-col items-center gap-1 shrink-0">
             <span v-if="b.quantite > 1" class="text-xs text-muted tabular-nums">×{{ b.quantite }}</span>
-            <button @click.stop="cave.drink(b.id)" class="px-3 py-1.5 rounded-full bg-riesling/40 border border-riesling text-xs flex items-center gap-1" title="Boire une bouteille"><Ic name="glass" cls="w-4 h-4" /></button>
+            <button @click.stop="cave.boireDemande(b.id)" class="px-3 py-1.5 rounded-full bg-riesling/40 border border-riesling text-xs flex items-center gap-1" title="Sortir une bouteille"><Ic name="bottleEmpty" cls="w-4 h-4" /></button>
             <button @click.stop="cave.plusUn(b)" class="px-2 py-1.5 rounded-full border border-hairline text-[11px] text-accent" :title="'Racheter une ' + b.nom" :class="cave.db.filters.etage === 'Spiritueux' ? 'border-chartreuse/40 text-chartreuse' : ''">+1</button>
           </div>
         </div>

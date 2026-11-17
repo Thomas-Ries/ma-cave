@@ -23,6 +23,7 @@ export const useCave = defineStore("cave", {
     apoAlerte: null,        /* null | "boire" | "bientot" | "passe" (onglet Apogées) */
     apogeeFiltre: false,    /* filtre « à boire cette année » (bandeau Cave) */
     derniereRaison: null, /* raison humaine du dernier échec de synchro */
+    combien: null,          /* question « tu sors combien ? » quand quantité > 1 */
     actu: null,             /* dernière actu du vin (RSS via le worker) */
     actuErreur: false,
     soirVersion: 0,         /* incrémenté quand les préférences du soir changent */
@@ -366,6 +367,24 @@ export const useCave = defineStore("cave", {
     },
 
     /* ---------- Boire / supprimer ---------- */
+    /* Plusieurs bouteilles en cave ? On demande combien on en sort (feuille Combien).
+       Une seule : on sort tout de suite, comme toujours. */
+    boireDemande(id) {
+      const b = this.db.bouteilles.find(x => x.id === id);
+      if (!b || b.quantite < 1) return;
+      if (b.quantite > 1) { this.combien = { id, q: 1, max: b.quantite }; return; }
+      this.drink(id);
+    },
+    boireConfirmee() {
+      const c = this.combien; if (!c) return;
+      const n = Math.max(1, Math.min(c.q, c.max));
+      const b = this.db.bouteilles.find(x => x.id === c.id);
+      this.combien = null;
+      if (!b) return;
+      for (let i = 0; i < n; i++) this.drink(c.id, true);
+      if (n === 1) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = this.db.bues[this.db.bues.length - 1]?.id; }
+      else { this.toast(`${n} bouteilles sorties — santé ! Verdicts à noter dans le carnet`); this.syncNotion({ action: "sync", bouteilles: [b] }); }
+    },
     drink(id, silent) {
       const b = this.db.bouteilles.find(x => x.id === id);
       if (!b || b.quantite < 1) return;
