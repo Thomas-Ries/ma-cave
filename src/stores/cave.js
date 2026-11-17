@@ -888,7 +888,7 @@ export const useCave = defineStore("cave", {
     d1Token() { try { return localStorage.getItem("ma-cave-token") || ""; } catch { return ""; } },
     setD1Token(t) {
       try { localStorage.setItem("ma-cave-token", String(t || "").trim()); } catch {}
-      this.toast(t ? "Jeton enregistré — teste la connexion ci-dessous" : "BDD déliée de cet appareil");
+      /* pas de toast : la pastille du ProfilSheet informe */
     },
     d1Fetch(path, opts) {
       const o = opts || {};
@@ -950,14 +950,13 @@ export const useCave = defineStore("cave", {
       try {
         const res = await this.d1Fetch("/api/db/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, actions }) });
         const j = await res.json();
-        if (!j.ok) { this.toast("BDD non synchronisée : " + (j.error || res.status)); return false; }
+        if (!j.ok) { console.error("[BDD] push refusé :", res.status, j.error); return false; }
         this.d1Write("-d1push", Date.now());
         this.d1Write("-d1ids", vus);
         this.d1Write("-d1ph", ph);
         this.d1Write("-d1doc", empreintes);
-        if (full) this.toast(`BDD à jour — ${actions.filter(a => a.t === "b").length} bouteille${actions.filter(a => a.t === "b").length > 1 ? "s" : ""} envoyée${actions.filter(a => a.t === "b").length > 1 ? "s" : ""}, ${j.photos || 0} photo${(j.photos || 0) > 1 ? "s" : ""}`);
         return true;
-      } catch (e) { console.error("[BDD] push échoué :", e); this.toast("Hors ligne — la BDD sera rattrapée au retour du réseau"); return false; }
+      } catch (e) { console.error("[BDD] push échoué :", e); return false; }
       finally { this.syncBusy(false); }
     },
     async d1Pull(manuel) {
@@ -969,9 +968,7 @@ export const useCave = defineStore("cave", {
         const res = await this.d1Fetch("/api/db/pull?profil=" + this.PROFIL);
         const j = await res.json();
         if (!j.ok) {
-          if (manuel) this.toast(res.status === 401
-            ? "Jeton refusé : vérifie la valeur MA_CAVE_TOKEN dans Cloudflare"
-            : "Récupération BDD impossible : " + (j.error || res.status));
+          console.error("[BDD] pull refusé :", res.status, j.error);
           return "refuse";
         }
         const ids = new Set(this.d1Read("-d1ids", []));
@@ -1020,12 +1017,12 @@ export const useCave = defineStore("cave", {
         this.d1Write("-d1doc", emp);
         this.d1Write("-d1push", Date.now());
         this.save();
-        if (added || updated || deleted) this.toast(`BDD rafraîchie — ${added} ajoutée${added > 1 ? "s" : ""}, ${updated} mise${updated > 1 ? "s" : ""} à jour${deleted ? ", " + deleted + " retirée" + (deleted > 1 ? "s" : "") : ""}`);
-        else if (manuel) this.toast("BDD joignable — rien de neuf à récupérer pour l'instant");
+        if (added || updated || deleted) console.log("[BDD] pull :", added, "ajoutées,", updated, "maj,", deleted, "retirées");
+        else console.log("[BDD] pull : rien de neuf");
         /* Photos manquantes : les récupérer en tâche de fond */
         this.d1Photos();
         return "ok";
-      } catch (e) { console.error("[BDD] pull échoué :", e); if (manuel) this.toast("Récupération BDD impossible : coupe réseau ?"); return "fail"; }
+      } catch (e) { console.error("[BDD] pull échoué :", e); return "fail"; }
       finally { this.syncBusy(false); }
     },
     async d1Photos() {
@@ -1040,16 +1037,19 @@ export const useCave = defineStore("cave", {
         this.d1Write("-d1ph", ph);
       }
     },
+    /* « Récupérer Notion » : recopie la base Notion du profil dans la BDD puis fusionne dans l'app.
+       Retourne { ok, bouteilles, docs, error } — la pastille du ProfilSheet affiche le résultat. */
     async d1MigrateNotion() {
-      if (!this.d1Token()) { this.toast("Lis d'abord le jeton de la BDD dans Profil"); return; }
+      if (!this.d1Token()) return { ok: false, error: "Colle d'abord le jeton puis « Lier cet appareil »." };
       this.syncBusy(true);
       try {
         const res = await this.d1Fetch("/api/migrate-notion?profil=" + this.PROFIL, { method: "POST" });
         const j = await res.json();
-        if (!j.ok) { this.toast("Migration impossible : " + (j.error || res.status)); return; }
-        this.toast(`Migration Notion -> BDD : ${j.bouteilles || 0} bouteilles, ${j.docs || 0} documents — récupération…`);
+        if (!j.ok) { console.error("[BDD] migration refusée :", res.status, j.error); return { ok: false, error: j.error || ("HTTP " + res.status) }; }
+        console.log("[BDD] migration Notion :", j.bouteilles, "bouteilles,", j.docs, "documents");
         await this.d1Pull(true);
-      } catch { this.toast("Migration impossible : coupe réseau ?"); }
+        return { ok: true, bouteilles: j.bouteilles || 0, docs: j.docs || 0 };
+      } catch (e) { console.error("[BDD] migration échouée :", e); return { ok: false, error: "connexion impossible" }; }
       finally { this.syncBusy(false); }
     },
 

@@ -103,9 +103,16 @@ async function lierBdd() {
     : "BDD injoignable (statut : " + st + "). Ouvre la console du navigateur (F12) : le détail de l'erreur y est affiché sous [BDD].";
   d1Busy.value = false;
 }
-async function pousserBdd() { d1Busy.value = true; await cave.d1Push(true); d1Busy.value = false; }
-async function recupererBdd() { d1Busy.value = true; await cave.d1Pull(true); d1Busy.value = false; }
-async function migrerNotion() { d1Busy.value = true; await cave.d1MigrateNotion(); d1Busy.value = false; }
+async function recupererNotion() {
+  d1Busy.value = true;
+  d1Verif.value = "Import de ta base Notion dans la BDD…";
+  const r = await cave.d1MigrateNotion();
+  d1Etat.value = r.ok ? "ok" : "refuse";
+  d1Verif.value = r.ok
+    ? `Import réussi : ${r.bouteilles} bouteilles et ${r.docs} documents récupérés depuis Notion.`
+    : ("Import impossible : " + (r.error || "réessaie plus tard"));
+  d1Busy.value = false;
+}
 
 /* ---------- Préférences du soir (suggestion « Ce soir ») ---------- */
 const prefs = ref(cave.soirPrefs());
@@ -328,15 +335,13 @@ function confirmDisable() {
           <button @click="lierBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Lier cet appareil</button>
         </div>
         <p v-if="d1Verif" class="text-[12px] mt-2 font-medium" :class="d1Etat === 'ok' ? 'text-accent' : d1Etat === 'vide' ? 'text-muted' : 'text-red'">{{ d1Verif }}</p>
-        <div v-if="d1tok" class="flex gap-2 mt-2">
-          <button @click="pousserBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Envoyer</button>
-          <button @click="recupererBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Récupérer</button>
-          <button @click="migrerNotion" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Importer Notion</button>
+        <div v-if="d1tok" class="mt-2">
+          <button @click="recupererNotion" :disabled="d1Busy" class="w-full py-2.5 rounded-full border border-hairline text-sm">Récupérer depuis Notion</button>
         </div>
-        <p class="text-[10px] text-muted mt-3 leading-relaxed">La synchro Notion continue en parallèle. « Envoyer » pousse tout cet appareil vers la BDD (première fois : migration complète, photos comprises). « Importer Notion » recopie la base Notion dans la BDD sans rien écraser de plus récent.</p>
+        <p class="text-[10px] text-muted mt-3 leading-relaxed">« Récupérer depuis Notion » recopie ta base Notion (bouteilles, dégustations, listes, envies, avatar, préférences) dans la BDD sans rien écraser de plus récent, puis fusionne le tout dans l'app. Ensuite, chaque modification part automatiquement vers la BDD.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.2</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.7</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

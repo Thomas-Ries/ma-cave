@@ -609,7 +609,8 @@ async function dbPush(request, env) {
       photoDels.push(a.k);
     }
   }
-  if (stmts.length) await db.batch(stmts);
+  /* D1 refuse les gros batchs : on découpe par lots de 50 requêtes */
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   for (const [k, v] of photos) await env.PHOTOS.put(k, v);
   for (const k of photoDels) { try { await env.PHOTOS.delete(k); } catch {} }
   return json({ ok: true, n: stmts.length, photos: photos.length });
@@ -671,7 +672,8 @@ async function dbMigrateNotion(env, profil) {
     });
     docs++;
   }
-  if (stmts.length) await db.batch(stmts);
+  /* D1 refuse les gros batchs : on découpe par lots de 50 requêtes */
+  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
   return json({ ok: true, profil, bouteilles: pages.length, docs, maj: new Date().toISOString() });
 }
 
