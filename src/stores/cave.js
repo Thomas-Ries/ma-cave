@@ -1281,7 +1281,7 @@ export const useCave = defineStore("cave", {
     async pushInit() { this.pushNotifEtat = await pushEtat(); },
     async pushOn() {
       try {
-        await pushActiver(this.d1Token(), this.PROFIL, this.pushDigest);
+        await pushActiver(this.d1Token(), this.PROFIL, this.pushDigest());
         this.pushNotifEtat = "on";
         this.toast("Rappels activés — tu seras prévenu même app fermée");
         return true;
@@ -1299,7 +1299,7 @@ export const useCave = defineStore("cave", {
     /* Après chaque synchro BDD : rafraîchit le résumé du cron, silencieux */
     async pushMaj() {
       if (this.pushNotifEtat !== "on") return;
-      try { await pushMajDigest(this.d1Token(), this.pushDigest); } catch {}
+      try { await pushMajDigest(this.d1Token(), this.pushDigest()); } catch {}
     },
 
     notifApogees() {
