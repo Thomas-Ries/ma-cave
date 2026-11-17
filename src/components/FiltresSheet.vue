@@ -9,7 +9,7 @@ const emit = defineEmits(["close"]);
 watch(() => props.open, v => cave.overlay("filtres", v));
 
 const s = cave;
-const list = cave.visible;
+/* plus de snapshot figé : on lit s.visible dans le template pour un compte réactif */
 const APOGEES = [{ v: "", t: "Toutes" }, { v: "boire", t: "À boire" }, { v: "bientot", t: "Bientôt" }, { v: "passe", t: "Passées" }];
 </script>
 
@@ -60,8 +60,8 @@ const APOGEES = [{ v: "", t: "Toutes" }, { v: "boire", t: "À boire" }, { v: "bi
         </div>
       </div>
       <div class="flex gap-3 mt-5">
-        <button @click="s.db.filters.cat = 'Toutes'; s.db.filters.cave = 'Toutes'; s.db.filters.region = 'Toutes'; s.db.filters.tri = ''; s.db.filters.apogee = ''; s.apogeeFiltre = false; s.save()" class="flex-1 py-2.5 rounded-full bg-white border border-hairline text-sm">Réinitialiser</button>
-        <button @click="emit('close')" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Afficher {{ list.length }} réf.</button>
+        <button @click="s.db.filters.cat = 'Toutes'; s.db.filters.cave = 'Toutes'; s.db.filters.region = 'Toutes'; s.db.filters.tri = ''; s.db.filters.apogee = ''; s.db.filters.etage = 'Tout'; s.db.filters.q = ''; s.apogeeFiltre = false; s.cavePage = 1; s.save()" class="flex-1 py-2.5 rounded-full bg-white border border-hairline text-sm">Réinitialiser</button>
+        <button @click="emit('close')" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Afficher {{ s.visible.length }} réf.</button>
       </div>
     </div>
   </div>
