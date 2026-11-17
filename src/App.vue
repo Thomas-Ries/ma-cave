@@ -153,6 +153,7 @@ const TABS = [
   { id: "soir", icon: "glass", label: "Ce soir", path: "/soir" },
   { id: "cave", icon: "cave", label: "Cave", path: "/cave" },
   { id: "carnet", icon: "note", label: "Le carnet", path: "/carnet" },
+  { id: "hopla", icon: "sparkles", label: "Hopla !", path: "/hopla" },
   { id: "profil", icon: "user", label: "Profil", path: null }
 ];
 /* L'onglet Profil n'est pas une route : il ouvre la feuille de gestion du profil */
@@ -256,7 +257,7 @@ function onAvatar(ev) {
     <!-- Nav basse (haute, icônes lisibles) -->
     <nav class="fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur border-t border-hairline">
       <div class="max-w-2xl mx-auto flex justify-center">
-        <button v-for="t in TABS" :key="t.id" @click="go(t)" class="w-28 py-3.5 flex flex-col items-center gap-1" :class="cave.TAB === t.id ? 'text-accent' : 'text-muted'">
+        <button v-for="t in TABS" :key="t.id" @click="go(t)" class="flex-1 max-w-28 py-3.5 flex flex-col items-center gap-1" :class="cave.TAB === t.id ? 'text-accent' : 'text-muted'">
           <img v-if="t.id === 'profil' && cave.avatarDe(cave.PROFIL)" :src="cave.avatarDe(cave.PROFIL)" alt="Profil" class="w-7 h-7 rounded-full object-cover border" :class="cave.TAB === t.id ? 'border-accent' : 'border-hairline'" />
           <Ic v-else :name="t.icon" cls="w-7 h-7" />
           <span class="text-[11px]">{{ t.label }}</span>

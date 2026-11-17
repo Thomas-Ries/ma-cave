@@ -6,6 +6,7 @@
  *   GET/POST /api/db/*      — BDD D1 : bouteilles, docs (bues, listes, envies, avatar, prefs), photos KV
  *   POST     /api/push-sub  — abonnements push (D1, jeton requis)
  *   POST     /api/push-cron — envoi du rappel d'apogées (secret cron) [appelé par le worker cron]
+ *   POST     /api/hopla    — chat du sommelier Hopla ! (relais API Mistral, clé MISTRAL_API_KEY) [v2.28]
  *   POST     /api/push-test — notif de test immédiate (secret cron) [diagnostic]
  *   GET      /api/actu      — une actu wine (RSS, sans clé)
  *   /partage, /apropos      — pages publiques
@@ -436,6 +437,34 @@ async function dbPull(env, profil) {
   return json({ ok: true, profil, bouteilles, docs, maj: new Date().toISOString() });
 }
 
+/* ==================== Hopla ! — le sommelier conversationnel (v2.28) ====================
+ * POST /api/hopla : reçoit { systeme, messages:[{role,content}] }, relaie vers
+ * l'API Mistral et renvoie { ok, texte }. La clé MISTRAL_API_KEY vit dans les
+ * variables du Pages (Settings > Functions > Environment variables) — jamais
+ * dans le front. Jeton MA_CAVE_TOKEN requis (même garde que la BDD D1). */
+async function hoplaChat(request, env) {
+  if (!env.MISTRAL_API_KEY) return json({ ok: false, error: "Variable MISTRAL_API_KEY absente (Settings > Functions > Environment variables)" }, 500);
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const msgs = Array.isArray(body.messages) ? body.messages.filter(m => m && typeof m.content === "string" && m.content.length < 20000) : [];
+  if (!msgs.length) return json({ ok: false, error: "Aucun message" }, 400);
+  const r = await fetch("https://api.mistral.ai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + env.MISTRAL_API_KEY },
+    body: JSON.stringify({
+      model: env.HOPLA_MODEL || "mistral-small-latest",
+      messages: [{ role: "system", content: String(body.systeme || "Tu es Hopla !, le sommelier domestique de la cave de Thomas. Tu réponds en français, sans émojis, court et précis.") }, ...msgs.slice(-20)],
+      max_tokens: 800,
+      temperature: 0.6,
+    }),
+  });
+  if (!r.ok) return json({ ok: false, error: "Mistral " + r.status + " : " + (await r.text()).slice(0, 200) }, 502);
+  const d = await r.json();
+  const texte = d.choices && d.choices[0] && d.choices[0].message ? (d.choices[0].message.content || "") : "";
+  if (!texte) return json({ ok: false, error: "Réponse vide du modèle" }, 502);
+  return json({ ok: true, texte });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -495,6 +524,13 @@ export default {
       if (!env.PUSH_CRON_SECRET || request.headers.get("x-cron-secret") !== env.PUSH_CRON_SECRET) return json({ ok: false, error: "Secret invalide" }, 401);
       if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
       return pushTest(env).catch(e => json({ ok: false, error: "Push test : " + String(e.message || e) }, 500));
+    }
+
+    /* --- Hopla ! : relais Mistral, jeton d'appairage requis --- */
+    if (url.pathname === "/api/hopla") {
+      if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
+      if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
+      return hoplaChat(request, env).catch(e => json({ ok: false, error: "Hopla : " + String(e.message || e) }, 500));
     }
 
     /* --- BDD D1 : tout exige le jeton d'appairage (401 sinon) --- */

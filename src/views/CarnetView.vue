@@ -6,10 +6,14 @@ import { useRouter } from "vue-router";
 import { useCave } from "../stores/cave.js";
 import Ic from "../components/Ic.vue";
 import ListesSheet from "../components/ListesSheet.vue";
+import RecettesSheet from "../components/RecettesSheet.vue";
+import { nbRecettes } from "../lib/recettes.js";
 
 const cave = useCave();
 const router = useRouter();
 const showListes = ref(false);
+const showRecettes = ref(false);
+const nbRec = ref(nbRecettes());
 
 /* Bues sans note : le carnet attend qu'on raconte la dégustation */
 const buesANoter = computed(() => (cave.db.bues || []).filter(h => h.note == null).length);
@@ -53,6 +57,16 @@ function vers(p) { router.push(p); }
         <Ic name="chevR" cls="w-4 h-4 text-muted shrink-0" />
       </button>
 
+      <button @click="showRecettes = true" class="w-full flex items-center gap-3 bg-white border border-hairline rounded-xl2 p-4 text-left card-sh">
+        <span class="w-10 h-10 rounded-full bg-riesling/40 text-ink flex items-center justify-center shrink-0"><Ic name="bookOpen" cls="w-5 h-5" /></span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm font-medium">Recettes de Hopla !</span>
+          <span class="block text-[11px] text-muted mt-0.5">Les recettes du sommelier, à ressortir au bon moment</span>
+        </span>
+        <span v-if="nbRec" class="px-2 py-0.5 rounded-full bg-gold text-white text-[11px] shrink-0">{{ nbRec }}</span>
+        <Ic name="chevR" cls="w-4 h-4 text-muted shrink-0" />
+      </button>
+
       <button @click="vers('/coeurs')" class="w-full flex items-center gap-3 bg-white border border-hairline rounded-xl2 p-4 text-left card-sh">
         <span class="w-10 h-10 rounded-full bg-accent/10 text-accent flex items-center justify-center shrink-0"><Ic name="heart" cls="w-5 h-5 fill-current" /></span>
         <span class="flex-1 min-w-0">
@@ -75,5 +89,6 @@ function vers(p) { router.push(p); }
     </div>
 
     <ListesSheet :open="showListes" @close="showListes = false" @to-cave="() => router.push('/cave')" />
+  <RecettesSheet :open="showRecettes" @close="showRecettes = false; nbRec = nbRecettes()" />
   </section>
 </template>

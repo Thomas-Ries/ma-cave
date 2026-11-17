@@ -7,6 +7,7 @@ import BuesView from "./views/BuesView.vue";
 import EnviesView from "./views/EnviesView.vue";
 import StatsView from "./views/StatsView.vue";
 import CoeursView from "./views/CoeursView.vue";
+import HoplaView from "./views/HoplaView.vue";
 
 export default createRouter({
   history: createWebHashHistory(),
@@ -19,6 +20,7 @@ export default createRouter({
     { path: "/bues", component: BuesView },
     { path: "/coeurs", component: CoeursView },
     { path: "/envies", component: EnviesView },
+    { path: "/hopla", component: HoplaView },
     { path: "/stats", component: StatsView }
   ]
 });
