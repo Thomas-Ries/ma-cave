@@ -5,11 +5,11 @@ import { useCave } from "../stores/cave.js";
 import { estimeApogee } from "../lib/apogee.js";
 import { platsPourBouteille } from "../lib/accords.js";
 import { partagerBouteille, lienPartage } from "../lib/partage.js";
-import { splitNom, cepageCourt, photoFromFile, accTxt } from "../util.js";
-import { CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
+import { splitNom, cepageCourt, photoFromFile, accTxt, regionTxt } from "../util.js";
+import { CEPAGES, SPECIFICITES, SPIRIT_MENTIONS, CAT_COLORS } from "../config.js";
 import Ic from "./Ic.vue";
 import { notePalier } from "../lib/noteEchelle.js";
-import { chargePhotoRegion, regionSlug, REGIONS } from "../lib/regions.js";
+import { chargePhotoRegion, regionSlug, clePhotoRegion, photoRegionSauve, REGIONS, normR } from "../lib/regions.js";
 
 const cave = useCave();
 const b = computed(() => cave.bouteilleOuverte);
@@ -59,19 +59,70 @@ watch(b, (nb, ob) => {
   if (edit.value) remplitEdit(nb);
 }, { immediate: true });
 
-/* Bandeau photo de région (v2.26) : affiché en tête de fiche en mode lecture,
-   uniquement si la bouteille n'a pas de photo perso (la photo perso reste prioritaire). */
-const photoReg = ref(null);
-const nomReg = computed(() => {
-  const slug = regionSlug(b.value);
-  if (slug) return REGIONS[slug]?.nom || slug;
-  return (b.value?.region || b.value?.pays || "").trim();
-});
+/* ===== Héro « Oeni » (v2.27) : même langage visuel que la vedette Ce soir.
+   Photo (perso > région locale > région embarquée > fond sombre) + bouteille pleine
+   colorée au premier plan, badges apogée/millésime/cœur, bulles pour les effervescents. */
+const photoHead = ref(null);
+const photoCle = computed(() => b.value ? clePhotoRegion(b.value) : null);
 watch(b, async nb => {
-  photoReg.value = null;
-  if (!nb || nb.photo) return;
-  try { photoReg.value = await chargePhotoRegion(nb); } catch {}
+  photoHead.value = null;
+  if (!nb) return;
+  if (nb.photo) { photoHead.value = nb.photo; return; }
+  try { photoHead.value = await chargePhotoRegion(nb); } catch {}
 }, { immediate: true });
+/* Bouton « ajouter une photo » uniquement s'il n'y a NI photo embarquée NI locale. */
+const peutAjouterPhoto = computed(() => {
+  const bo = b.value;
+  return bo && !bo.photo && !photoHead.value && photoCle.value && (bo.region || bo.pays);
+});
+function photoRegionChoisie(ev) {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  const bo = b.value, cle = photoCle.value;
+  if (!f || !bo || !cle) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 640 / Math.max(img.width, img.height));
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(img.width * k));
+      cv.height = Math.max(1, Math.round(img.height * k));
+      cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+      const d = cv.toDataURL("image/jpeg", 0.65);
+      photoRegionSauve(cle, d);
+      photoHead.value = d;
+      cave.toast("Photo de région enregistrée sur cet appareil");
+    };
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(f);
+}
+/* Nom de région affiché sur le héro : le libellé de la fiche, sinon la table. */
+const regionNom = computed(() => {
+  const bo = b.value;
+  if (!bo) return "";
+  return bo.region || bo.pays || REGIONS[regionSlug(bo)]?.nom || "";
+});
+/* Bouteille pleine : couleur de la catégorie ; spiritueux vert/ambre (code défensif). */
+const bouteilleCol = computed(() => {
+  const bo = b.value;
+  if (!bo) return "#7A2E3E";
+  const cat = bo.categorie || "";
+  if (cat === "Spiritueux") {
+    const t = normR([bo.nom, bo.cuvee].join(" "));
+    return /whisky|whiskey|rhum|cognac|armagnac|bourbon/.test(t) ? "#B26C1E" : "#34583A";
+  }
+  return CAT_COLORS[cat] || "#7A2E3E";
+});
+const aBulles = computed(() => ["Champagne", "Crémant", "Effervescent"].includes(b.value?.categorie));
+/* Badge d'état d'apogée (même vocabulaire que la vedette). */
+const apoEtat = computed(() => {
+  const a = apo.value;
+  if (!a) return null;
+  return year < a.d ? { t: "À garder", etat: "garder" } : year <= a.f ? { t: "Apogée", etat: "apogee" } : { t: "À boire", etat: "passe" };
+});
+const coeurFiche = computed(() => { try { return !!cave.estCoeur(b.value) } catch { return false } });
 
 /* Select cépage édition : liste + Assemblage + Autre… (texte conservé si hors liste) */
 const CEPAGE_OPTS = ["", ...CEPAGES, "Assemblage", "__autre__"];
@@ -219,19 +270,46 @@ watch(acc, v => cave.overlay("fiche-acc", v));
     <div class="bg-white rounded-t-xl2 md:rounded-xl2 w-full max-w-md max-h-[92vh] overflow-y-auto">
 
       <!-- ===== Lecture ===== -->
-      <div v-if="!edit" class="p-5">
-        <div class="flex items-start justify-end">
-          <button @click="startEdit" class="text-muted p-2 -m-2 mr-1" title="Modifier la fiche"><Ic name="pencil" cls="w-5 h-5" /></button>
-          <button @click="cave.closeFiche()" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
+      <div v-if="!edit">
+        <!-- Héro « Oeni » (v2.27) : photo (perso > région > fond sombre) + bouteille pleine -->
+        <div class="relative w-full h-[150px] overflow-hidden shrink-0" :style="photoHead ? {} : { background: '#2B2724' }">
+          <img v-if="photoHead" :src="photoHead" alt="" class="absolute inset-0 w-full h-full object-cover opacity-95" />
+          <div class="absolute inset-0" style="background: linear-gradient(to top, #FFFFFF 0%, rgba(255,255,255,0) 48%)"></div>
+          <div class="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+            <span v-if="apoEtat" class="px-2 py-0.5 rounded-full text-[10px] font-medium" :style="{ background: apoEtat.etat === 'passe' ? '#7A2E3E' : '#D9C589', color: apoEtat.etat === 'passe' ? '#fff' : '#2B2724' }">{{ apoEtat.t }}</span>
+            <span v-if="b.millesime" class="px-2 py-0.5 rounded-full text-[10px] font-medium" style="background: rgba(43,39,36,.55); color: #fff">{{ b.millesime }}</span>
+            <span v-if="coeurFiche" class="w-5 h-5 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.55)"><Ic name="heart" cls="w-3 h-3 text-gold fill-current" /></span>
+          </div>
+          <div class="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+            <button @click="startEdit" class="w-6 h-6 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Modifier la fiche"><Ic name="pencil" cls="w-3.5 h-3.5" /></button>
+            <button @click="cave.closeFiche()" class="w-6 h-6 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Fermer"><Ic name="x" cls="w-3.5 h-3.5" /></button>
+          </div>
+          <span class="absolute left-3 bottom-2 min-w-0">
+            <span v-if="regionNom" class="block font-serif text-[15px] leading-tight" style="color: #2B2724">{{ regionNom }}</span>
+            <span class="block text-[10px] mt-1 truncate" style="color: #5C5248">{{ [b.categorie, regionTxt(b) !== regionNom ? regionTxt(b) : ''].filter(Boolean).join(' · ') }}</span>
+          </span>
+          <span v-if="photoHead && !b.photo" class="absolute bottom-1.5 right-2 text-[8px] opacity-60" style="color: #fff">photo · CC-BY</span>
+          <span class="absolute right-1 -bottom-[14px] w-[94px] h-[94px] rounded-full pointer-events-none" style="background: radial-gradient(closest-side, rgba(255,255,255,.55), rgba(255,255,255,0) 70%)"></span>
+          <svg viewBox="0 0 44 84" class="absolute right-3 -bottom-1 h-[124px] w-[62px] pointer-events-none" :style="{ color: bouteilleCol, filter: 'drop-shadow(0 4px 9px rgba(0,0,0,.45))' }">
+            <path d="M19 5h6v13c0 3 8 5 8 12v44a6 6 0 0 1-6 6H17a6 6 0 0 1-6-6V30c0-7 8-9 8-12V5z" fill="currentColor" fill-opacity=".93" stroke="none" />
+            <path d="M20.5 33v31" stroke="rgba(255,255,255,.5)" stroke-width="2.6" stroke-linecap="round" fill="none" />
+            <path d="M19 5h6v13c0 3 8 5 8 12v44a6 6 0 0 1-6 6H17a6 6 0 0 1-6-6V30c0-7 8-9 8-12V5z" fill="none" stroke="rgba(43,39,36,.35)" stroke-width="1" />
+            <g v-if="aBulles" fill="rgba(255,255,255,.9)">
+              <circle class="bulle" cx="18" cy="60" r="1.3" style="animation-delay: 0s" />
+              <circle class="bulle" cx="24" cy="66" r="1" style="animation-delay: .6s" />
+              <circle class="bulle" cx="21" cy="70" r="1.4" style="animation-delay: 1.1s" />
+              <circle class="bulle" cx="26" cy="61" r="0.9" style="animation-delay: 1.7s" />
+              <circle class="bulle" cx="19.5" cy="64" r="1" style="animation-delay: 2.2s" />
+            </g>
+          </svg>
         </div>
+        <!-- Ajouter une photo pour une région sans image embarquée (stockage local) -->
+        <label v-if="peutAjouterPhoto" class="flex items-center justify-center gap-1.5 py-2 text-[11px] text-muted border-b border-hairline cursor-pointer bg-cream/60">
+          <Ic name="camera" cls="w-3.5 h-3.5" /> Ajouter une photo de « {{ regionNom }} » (enregistrée sur cet appareil)
+          <input type="file" accept="image/*" class="hidden" @change="photoRegionChoisie" />
+        </label>
 
-        <!-- Bandeau photo de région (v2.26) : seulement sans photo perso -->
-        <div v-if="photoReg" class="relative h-24 mt-2 rounded-xl2 bg-cover bg-center" :style="'background-image:url(' + photoReg + ')'">
-          <span class="absolute left-3 bottom-1.5 text-[10px] uppercase tracking-widest text-white/90" style="text-shadow:0 1px 4px rgba(0,0,0,.55)">{{ nomReg }}</span>
-        </div>
-
-        <img v-if="b.photo" :src="b.photo" alt="" class="w-full h-44 object-cover rounded-xl2 mt-2" />
-
+        <div class="px-5 pb-5">
         <div class="mt-2 p-4 bg-cream rounded-xl2 text-center">
           <p v-if="sn.domaine" class="font-serif text-2xl leading-tight">{{ sn.domaine }}</p>
           <p v-if="sn.cuvee" class="font-serif text-lg leading-snug mt-0.5">{{ sn.cuvee }}</p>
@@ -298,6 +376,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
         <div class="flex gap-2 mt-4">
           <button @click="boire" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm flex items-center justify-center gap-2"><Ic name="glass" cls="w-5 h-5" /> Boire une bouteille</button>
           <button @click="supprimer" class="shrink-0 px-4 py-2.5 rounded-full border border-accent text-accent text-sm flex items-center gap-1.5" title="Supprimer cette bouteille de la cave"><Ic name="trash" cls="w-4 h-4" /> Supprimer</button>
+        </div>
         </div>
       </div>
 
@@ -456,3 +535,9 @@ watch(acc, v => cave.overlay("fiche-acc", v));
     </div>
   </div>
 </template>
+
+<style>
+/* Bulles des effervescents (héro de la fiche, comme la vedette) */
+@keyframes mcBulleUp { 0% { transform: translateY(0); opacity: .95 } 80% { opacity: .85 } 100% { transform: translateY(-26px); opacity: 0 } }
+.bulle { animation: mcBulleUp 2.6s linear infinite; }
+</style>
