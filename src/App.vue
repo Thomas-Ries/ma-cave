@@ -118,9 +118,15 @@ function entrerProfil(id) {
     const prenom = cave.PROFILS[id].nom;
     cave.toast(st === "ok" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro — ça réessaiera tout seul`);
   }); cave.autoBackup();
-  /* BDD : rafraîchissement silencieux toutes les 5 min — multi-appareils quasi temps réel */
-  setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 5 * 60 * 1000);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cave.d1Pull(false); });
+  /* BDD : rafraîchissement silencieux toutes les 60 s + à chaque retour au premier plan
+     (onglet OU fenêtre) — multi-appareils quasi temps réel. _d1Poll : entrerProfil peut être
+     appelé plusieurs fois (changement de profil) ; sans garde, les intervalles se cumulent. */
+  if (!window._d1Poll) {
+    window._d1Poll = setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 60 * 1000);
+    const rappele = () => { if (document.visibilityState === "visible") cave.d1Pull(false); };
+    document.addEventListener("visibilitychange", rappele);
+    window.addEventListener("focus", rappele);
+  }
   cave.notifApogees(); cave.notifListes(); cave.pushInit(); rattrapeRappels();
   /* Instrumentation push v2.21.4 : le SW prévient l'app quand il reçoit un message
      (ou quand l'affichage échoue) — permet de situer un problème de livraison. */
