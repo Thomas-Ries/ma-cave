@@ -21,6 +21,16 @@
 const API = "https://api.notion.com/v1";
 const VERSION = "2022-06-28";
 
+/* Entités HTML des flux RSS : « l&#039; » → « l' », &amp; → &… */
+function decodeEntities(t) {
+  const NOMS = { amp: "&", quot: "\u0022", apos: "'", lt: "<", gt: ">", nbsp: " ", eacute: "\u00e9", egrave: "\u00e8", ecirc: "\u00ea", agrave: "\u00e0", acirc: "\u00e2", icirc: "\u00ee", ocirc: "\u00f4", ucirc: "\u00fb", ugrave: "\u00f9", ccedil: "\u00e7", euml: "\u00eb" };
+  return t
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/&([a-z]+);/gi, (_, n) => NOMS[n.toLowerCase()] ?? (n.toLowerCase() === "amp" ? "&" : "&" + n + ";"))
+    .replace(/&amp;/g, "&");
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 }
@@ -560,7 +570,7 @@ export default {
               const heures = Math.max(0, Math.round((Date.now() - ts) / 3600000));
               age = heures < 1 ? "à l'instant" : heures < 24 ? "il y a " + heures + " h" : "il y a " + Math.round(heures / 24) + " j";
             }
-            return json({ ok: true, titre: t.trim(), url: l.trim(), source: s.nom, date: d, age });
+            return json({ ok: true, titre: decodeEntities(t.trim()), url: l.trim(), source: s.nom, date: d, age });
           }
         } catch {}
       }

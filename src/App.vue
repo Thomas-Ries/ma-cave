@@ -7,6 +7,7 @@ import { photoFromFile } from "./util.js";
 import { rattrapeRappels } from "./lib/notifs.js";
 import { verifierBiometrie, cleDe, biomometriePrete } from "./lib/face.js";
 import Ic from "./components/Ic.vue";
+import ProfilSheet from "./components/ProfilSheet.vue";
 import FicheModal from "./components/FicheModal.vue";
 import FicheBueModal from "./components/FicheBueModal.vue";
 
@@ -137,13 +138,16 @@ watch(() => cave.askConf, v => cave.overlay("ask", !!v));
 const TABS = [
   { id: "soir", icon: "glass", label: "Ce soir", path: "/soir" },
   { id: "cave", icon: "cave", label: "Cave", path: "/cave" },
-  { id: "carnet", icon: "note", label: "Le carnet", path: "/carnet" }
+  { id: "carnet", icon: "note", label: "Le carnet", path: "/carnet" },
+  { id: "profil", icon: "user", label: "Profil", path: null }
 ];
+/* L'onglet Profil n'est pas une route : il ouvre la feuille de gestion du profil */
+const showProfil = ref(false);
 /* Les vues du carnet (envies, accords, bues, stats) restent accessibles : elles
    highlightent l'onglet Le carnet au lieu d'un onglet disparu. */
 const CARNET_ROUTES = ["/envies", "/accords", "/bues", "/stats"];
 
-function go(t) { cave.TAB = t.id; router.push(t.path); }
+function go(t) { if (t.id === "profil") { showProfil.value = true; return; } cave.TAB = t.id; router.push(t.path); }
 watch(route, r => {
   const t = TABS.find(x => x.path === r.path);
   if (t) cave.TAB = t.id;
@@ -236,17 +240,17 @@ function onAvatar(ev) {
 
     <!-- Nav basse (haute, icônes lisibles) -->
     <nav class="fixed bottom-0 inset-x-0 z-20 bg-white/95 backdrop-blur border-t border-hairline">
-      <div class="max-w-2xl mx-auto grid grid-cols-5">
-        <button v-for="t in TABS" :key="t.id" @click="go(t)" class="py-3.5 flex flex-col items-center gap-1 relative" :class="cave.TAB === t.id ? 'text-accent' : 'text-muted'">
+      <div class="max-w-2xl mx-auto flex justify-center">
+        <button v-for="t in TABS" :key="t.id" @click="go(t)" class="w-28 py-3.5 flex flex-col items-center gap-1" :class="cave.TAB === t.id ? 'text-accent' : 'text-muted'">
           <Ic :name="t.icon" cls="w-7 h-7" />
           <span class="text-[11px]">{{ t.label }}</span>
-          <span v-if="t.id === 'apogees' && cave.apoAlerte && cave.apogeeStats.boire > 0" class="absolute top-2 right-[22%] w-2.5 h-2.5 rounded-full bg-accent"></span>
         </button>
       </div>
     </nav>
 
     <FicheModal />
     <FicheBueModal />
+    <ProfilSheet :open="showProfil" :on-avatar="onAvatar" @close="showProfil = false" />
 
     <!-- Toasts -->
     <div class="fixed bottom-28 inset-x-0 z-40 pointer-events-none flex flex-col items-center">
