@@ -977,15 +977,30 @@ export const useCave = defineStore("cave", {
         for (const nb of (j.bouteilles || [])) {
           if (!nb || !nb.id) continue;
           distants.add(nb.id);
-          const local = this.db.bouteilles.find(b => b.id === nb.id);
+          /* correspondance par ID, puis par nom+millésime+cave+cuvée (l'import Notion donne
+             des IDs de page Notion ≠ uids locaux : sans ça, une même bouteille dupliquée) */
+          let local = this.db.bouteilles.find(b => b.id === nb.id);
+          if (!local) local = this.db.bouteilles.find(b => importKey(b) === importKey(nb));
           if (!local) {
             nb.photo = null;
+            if (!nb.apoDebut && !nb.apoFin && !nb.apoAuto) { const est = estimeApogee(nb); if (est) { nb.apoAuto = est; nb.apoRegle = est.regle; } }
             this.db.bouteilles.push(nb);
             added++;
-          } else if ((nb.modifLe || "") >= (local.modifLe || "")) {
-            const photo = local.photo;
-            Object.assign(local, nb, { photo });
-            updated++;
+          } else {
+            distants.add(local.id);
+            if ((nb.modifLe || "") >= (local.modifLe || "")) {
+              const photo = local.photo;
+              /* ne jamais écraser par du vide : Notion ne stocke ni apogée ni photo */
+              for (const f of Object.keys(nb)) {
+                if (f === "photo" || f === "id") continue;
+                if (nb[f] == null || nb[f] === "") continue;
+                if (["apoDebut", "apoFin", "apoAuto", "apoRegle", "bues", "note"].includes(f) && local[f]) continue;
+                local[f] = nb[f];
+              }
+              local.photo = photo;
+              updated++;
+            }
+            if (!local.apoDebut && !local.apoFin && !local.apoAuto) { const est = estimeApogee(local); if (est) { local.apoAuto = est; local.apoRegle = est.regle; } }
           }
         }
         /* Supprimées à distance : seulement celles déjà connues de la BDD */
