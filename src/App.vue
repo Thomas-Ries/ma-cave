@@ -125,7 +125,7 @@ function entrerProfil(id) {
   /* BDD : rafraîchissement silencieux toutes les 5 min — multi-appareils quasi temps réel */
   setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cave.d1Pull(false); });
-  cave.notifApogees(); cave.notifListes(); rattrapeRappels();
+  cave.notifApogees(); cave.notifListes(); cave.pushInit(); rattrapeRappels();
 }
 
 provide("openFiche", (id, retour) => cave.openFiche(id, retour));
