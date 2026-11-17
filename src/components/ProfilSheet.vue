@@ -341,7 +341,7 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">« Récupérer depuis Notion » recopie ta base Notion (bouteilles, dégustations, listes, envies, avatar, préférences) dans la BDD sans rien écraser de plus récent, puis fusionne le tout dans l'app. Ensuite, chaque modification part automatiquement vers la BDD.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.9</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.10</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

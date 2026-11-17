@@ -121,6 +121,9 @@ function entrerProfil(id) {
     const prenom = cave.PROFILS[id].nom;
     cave.toast(st === "ok" || st === "fresh" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro : ${cave.derniereRaison || 'retente plus tard'}`);
   }); cave.flushQueue(); cave.autoBackup(); cave.d1Pull(false);
+  /* BDD : rafraîchissement silencieux toutes les 5 min — multi-appareils quasi temps réel */
+  setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 5 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cave.d1Pull(false); });
   cave.notifApogees(); cave.notifListes(); rattrapeRappels();
 }
 
