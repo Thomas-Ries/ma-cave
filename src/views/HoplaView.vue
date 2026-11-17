@@ -78,10 +78,10 @@ function effaceTout() {
 </script>
 
 <template>
-  <section class="fixed inset-0 bg-ink flex flex-col z-10" style="padding-bottom: 64px">
+  <section class="fixed inset-0 bg-ink flex flex-col z-10" style="padding-bottom: 96px">
     <!-- En-tête : bouteille Hopla -->
     <div class="flex items-center gap-3 px-5 pt-4 pb-3 border-b border-white/10 shrink-0">
-      <div class="w-11 h-11 rounded-full bg-white/8 flex items-end justify-center overflow-hidden shrink-0">
+      <div class="w-11 h-11 rounded-full flex items-end justify-center overflow-hidden shrink-0" style="background: rgba(245,240,232,.08)">
         <svg width="24" height="34" viewBox="0 0 44 84">
           <rect x="19" y="4" width="6" height="12" fill="#D9CFBE"/>
           <path d="M17 16 h10 c5 0 8 4 8 9 v46 c0 4 -3 7 -7 7 H16 c-4 0 -7 -3 -7 -7 V25 c0 -5 3 -9 8 -9 z" fill="#7A2E3E"/>
@@ -92,7 +92,7 @@ function effaceTout() {
         <p class="font-serif text-lg text-cream leading-tight">Hopla !</p>
         <p class="text-[11px] mt-0.5" :class="occupe ? 'text-riesling' : 'text-cream/60'">{{ occupe ? 'Consulte la cave…' : 'Le sommelier de votre cave · ' + nbEnCave + ' bouteilles' }}</p>
       </div>
-      <button @click="effaceTout" class="w-9 h-9 rounded-full bg-white/8 text-cream/70 flex items-center justify-center shrink-0" title="Effacer la conversation">
+      <button @click="effaceTout" class="w-9 h-9 rounded-full text-cream/70 flex items-center justify-center shrink-0" style="background: rgba(245,240,232,.08)" title="Effacer la conversation">
         <Ic name="trash" cls="w-4 h-4" />
       </button>
     </div>
@@ -128,7 +128,7 @@ function effaceTout() {
     <!-- Barre de saisie -->
     <div class="px-4 pt-2 pb-3 flex gap-2 shrink-0">
       <input v-model="q" @keydown.enter="envoie()" placeholder="Demandez à Hopla…"
-             class="flex-1 bg-cream/8 border border-cream/15 rounded-full px-4 py-3 text-sm text-cream placeholder-cream/40 outline-none" />
+             class="flex-1 rounded-full px-4 py-3 text-sm outline-none" style="background: rgba(43,39,36,.55); color: #F5F0E8; border: 1px solid rgba(245,240,232,.18)" />
       <button @click="envoie()" :disabled="occupe || !q.trim()"
               class="w-12 h-12 rounded-full bg-accent flex items-center justify-center shrink-0 disabled:opacity-40" title="Envoyer">
         <Ic name="share" cls="w-5 h-5 text-cream rotate-90" />
