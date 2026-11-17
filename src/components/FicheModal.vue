@@ -280,9 +280,9 @@ watch(acc, v => cave.overlay("fiche-acc", v));
             <span v-if="b.millesime" class="px-2 py-0.5 rounded-full text-[10px] font-medium" style="background: rgba(43,39,36,.55); color: #fff">{{ b.millesime }}</span>
             <span v-if="coeurFiche" class="w-5 h-5 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.55)"><Ic name="heart" cls="w-3 h-3 text-gold fill-current" /></span>
           </div>
-          <div class="absolute top-2.5 right-2.5 flex items-center gap-1.5">
-            <button @click="startEdit" class="w-6 h-6 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Modifier la fiche"><Ic name="pencil" cls="w-3.5 h-3.5" /></button>
-            <button @click="cave.closeFiche()" class="w-6 h-6 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Fermer"><Ic name="x" cls="w-3.5 h-3.5" /></button>
+          <div class="absolute top-2 right-2 flex items-center gap-2">
+            <button @click="startEdit" class="w-9 h-9 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Modifier la fiche"><Ic name="pencil" cls="w-4 h-4" /></button>
+            <button @click="cave.closeFiche()" class="w-9 h-9 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
           </div>
           <span class="absolute left-3 bottom-2 min-w-0">
             <span v-if="regionNom" class="block font-serif text-[15px] leading-tight" style="color: #2B2724">{{ regionNom }}</span>
