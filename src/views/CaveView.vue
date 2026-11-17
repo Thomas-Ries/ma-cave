@@ -13,17 +13,13 @@ import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
 import ListesSheet from "../components/ListesSheet.vue";
 import ImportPreview from "../components/ImportPreview.vue";
-import ProfilSheet from "../components/ProfilSheet.vue";
 
 const cave = useCave();
 const router = useRouter();
 const year = new Date().getFullYear();
 
 const openFiche = inject("openFiche");
-const onAvatar = inject("onAvatar");
 
-const profilMenu = ref(false);
-const showProfil = ref(false);
 /* Préférences du soir (bandeau apogée) : même source que Ce soir, rafraîchie
    quand les préférences changent (soirVersion). Le bandeau les référence —
    sans cette définition, le rendu de la vue plantait dès qu'une bouteille
@@ -54,18 +50,6 @@ const filtresParts = computed(() => {
   return parts;
 });
 const filtresLibelle = computed(() => filtresParts.value.join(" · "));
-function switchProfil(id) {
-  if (id === cave.PROFIL) { profilMenu.value = false; return; }
-  cave.useProfil(id);
-  cave.pullAvatar();
-  cave.pullSoirPrefs();
-  cave.pullListes();
-  cave.pullBues();
-  cave.pullEnvies();
-  profilMenu.value = false;
-  cave.toast("Cave de " + cave.PROFILS[id].nom);
-}
-
 const search = ref((cave.db.filters && cave.db.filters.q) || ""); /* repart du filtre actif : jamais bloqué sur une recherche invisible */
 watch(() => cave.db.filters && cave.db.filters.q, v => { if ((v || "") !== search.value) search.value = v || ""; });
 const showAdd = ref(false);
@@ -394,27 +378,6 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
       </div>
     </div>
 
-    <!-- Profil : hors de la rangée défilante, sinon le menu est découpé par overflow -->
-    <div class="relative mt-2.5 inline-block">
-      <button @click="profilMenu = !profilMenu" class="h-9 pl-2 pr-2.5 rounded-full bg-white border border-hairline flex items-center gap-1.5" title="Changer de profil ou de photo">
-        <img v-if="cave.avatarDe(cave.PROFIL)" :src="cave.avatarDe(cave.PROFIL)" alt="" class="w-6 h-6 rounded-full object-cover" />
-        <Ic v-else name="user" cls="w-4 h-4" />
-        <span class="text-xs">{{ cave.PROFILS[cave.PROFIL].nom }}</span>
-        <Ic name="chevron" cls="w-3.5 h-3.5 text-muted" />
-      </button>
-      <div v-if="profilMenu" class="fixed inset-0 z-30" @click="profilMenu = false"></div>
-      <div v-if="profilMenu" class="absolute left-0 top-11 z-40 w-52 bg-white border border-hairline rounded-xl2 shadow-xl py-1">
-        <button v-for="p in Object.values(cave.PROFILS)" :key="p.id" @click="switchProfil(p.id)" class="w-full px-4 py-2.5 text-sm text-left flex items-center gap-2" :class="p.id === cave.PROFIL ? 'text-accent font-medium' : 'text-ink'">
-          <Ic v-if="p.id === cave.PROFIL" name="check" cls="w-4 h-4" /><span v-else class="w-4"></span>{{ p.nom }}
-          <Ic v-if="cave.hasPin(p.id)" name="lock" cls="w-3 h-3 ml-auto text-muted" />
-        </button>
-        <div class="border-t border-hairline my-1"></div>
-        <button @click="profilMenu = false; showProfil = true" class="w-full px-4 py-2.5 text-sm text-left flex items-center gap-2">
-          <Ic name="user" cls="w-4 h-4" /> Gérer mon profil
-        </button>
-      </div>
-    </div>
-
     <!-- Cave à étages : Vins / Spiritueux / Tout -->
     <div class="flex gap-1.5 mt-2.5">
       <button v-for="t in ETAGES" :key="t.id" @click="setEtage(t.id)"
@@ -561,7 +524,6 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <!-- Feuilles & modales -->
     <FiltresSheet :open="showFiltres" @close="showFiltres = false" />
     <ListesSheet :open="showListes" @close="showListes = false" @to-cave="envieVersCave" />
-    <ProfilSheet :open="showProfil" :on-avatar="onAvatar" @close="showProfil = false" />
     <ImportPreview v-if="importRows" :rows="importRows" @close="importRows = null" />
 
     
