@@ -133,6 +133,14 @@ const eCepageSel = computed({
 
 function startEdit() { remplitEdit(b.value); edit.value = true; }
 
+/* Coup de cœur manuel depuis le héro : toggleCoeur persiste + synchro BDD,
+   on passe txt=false pour un toast sans emoji (préférence durable). */
+function toggleCoeurFiche() {
+  if (!b.value) return;
+  cave.toggleCoeur(b.value, false);
+  cave.toast(cave.estCoeur(b.value) ? "Coup de cœur — visible sur la fiche et les exemplaires du même vin" : "Retiré des coups de cœur");
+}
+
 function saveEdit() {
   const bo = b.value;
   const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? null : n; };
@@ -281,6 +289,7 @@ watch(acc, v => cave.overlay("fiche-acc", v));
             <span v-if="coeurFiche" class="w-5 h-5 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.55)"><Ic name="heart" cls="w-3 h-3 text-gold fill-current" /></span>
           </div>
           <div class="absolute top-2 right-2 flex items-center gap-2">
+            <button @click="toggleCoeurFiche" class="w-9 h-9 rounded-full flex items-center justify-center" :style="{ background: coeurFiche ? 'rgba(122,46,62,.88)' : 'rgba(43,39,36,.45)', color: '#fff' }" :title="coeurFiche ? 'Retirer des coups de cœur' : 'Marquer comme coup de cœur'"><Ic name="heart" :cls="'w-4 h-4' + (coeurFiche ? ' text-gold fill-current' : '')" /></button>
             <button @click="startEdit" class="w-9 h-9 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Modifier la fiche"><Ic name="pencil" cls="w-4 h-4" /></button>
             <button @click="cave.closeFiche()" class="w-9 h-9 rounded-full flex items-center justify-center" style="background: rgba(43,39,36,.45); color: #fff" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
           </div>
