@@ -126,6 +126,15 @@ function entrerProfil(id) {
   setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cave.d1Pull(false); });
   cave.notifApogees(); cave.notifListes(); cave.pushInit(); rattrapeRappels();
+  /* Instrumentation push v2.21.4 : le SW prévient l'app quand il reçoit un message
+     (ou quand l'affichage échoue) — permet de situer un problème de livraison. */
+  try {
+    navigator.serviceWorker.addEventListener("message", e => {
+      const d = e.data || {};
+      if (d.type === "push-recu") cave.toast("PUSH REÇU" + (d.dechiffre ? " (payload OK)" : " (payload ILLISIBLE)") + " : " + (d.titre || "") + " / " + (d.corps || ""));
+      if (d.type === "push-erreur") cave.toast("ERREUR AFFICHAGE NOTIF : " + (d.err || "?"));
+    });
+  } catch {}
 }
 
 provide("openFiche", (id, retour) => cave.openFiche(id, retour));
