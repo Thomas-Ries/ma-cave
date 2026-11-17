@@ -117,7 +117,7 @@ async function lierBdd() {
     const imp = d1Import.value;
     d1Verif.value = (imp.vins || imp.spirits)
       ? "Connexion réussie : " + imp.vins + " vin" + (imp.vins > 1 ? "s" : "") + (imp.spirits ? " et " + imp.spirits + " spiritueux" : "") + " importés depuis la BDD."
-      : "Connexion réussie : la BDD répond mais est vide — envoie tes données depuis l'appareil principal.";
+      : "Connexion réussie : la BDD répond, mais le profil « " + (cave.PROFILS[cave.PROFIL]?.nom || cave.PROFIL) + " » n'y a aucune bouteille. Vérifie que tu es sur le bon profil, ou envoie tes données depuis l'appareil principal.";
   } else {
     d1Verif.value = st === "refuse" ? "Connexion refusée : le jeton ne correspond pas à MA_CAVE_TOKEN (ou la variable n'est pas encore déployée côté Cloudflare)."
       : "BDD injoignable (statut : " + st + "). Ouvre la console du navigateur (F12) : le détail de l'erreur y est affiché sous [BDD].";
@@ -376,14 +376,14 @@ function confirmDisable() {
           <Ic name="check" cls="w-4 h-4 text-green shrink-0" />
           <span class="flex-1 min-w-0">
             <span v-if="d1Import.vins || d1Import.spirits" class="block text-xs font-medium text-green truncate">{{ d1Import.vins }} vin{{ d1Import.vins > 1 ? 's' : '' }}<template v-if="d1Import.spirits"> et {{ d1Import.spirits }} spiritueux</template> importés depuis la BDD</span>
-            <span v-else class="block text-xs font-medium text-muted">BDD liée — aucune bouteille synchronisée pour l'instant</span>
+            <span v-else class="block text-xs font-medium text-muted">BDD liée — aucune bouteille synchronisée pour ce profil pour l'instant</span>
             <span class="block text-[10px] text-muted">Dernière synchro {{ ilYA(d1SyncTs) }}</span>
           </span>
         </div>
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.18.0</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.18.1</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
