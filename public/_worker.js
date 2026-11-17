@@ -430,6 +430,24 @@ async function pushCron(env) {
   return json({ ok: true, envoyees, mortes, erreurs, total: await pushNombre(env), details, journal });
 }
 
+/* POST /api/push-test (secret) : envoie UNE notification de test à TOUS les
+   abonnés, immédiatement, sans toucher à l'anti-spam (envoye/cle intacts).
+   Renvoie le détail par appareil, dont le service push utilisé
+   (web.push.apple.com = Safari/iOS, fcm.googleapis.com = Chrome). */
+async function pushTest(env) {
+  const subs = await pushLecture(env);
+  const journal = [];
+  for (const s of subs) {
+    const service = (s.endpoint || "").includes("fcm.googleapis.com") ? "google (Chrome/Android)" : (s.endpoint || "").includes("web.push.apple.com") ? "apple (Safari/iOS)" : "?";
+    try {
+      const res = await webpush(env, s, { titre: "Ma Cave — test", corps: "Notification de test : si vous lisez ceci, tout fonctionne.", tag: "ma-cave-test" });
+      if (res.ok || res.status === 201) journal.push({ service, profil: s.profil, ok: true, status: res.status });
+      else journal.push({ service, profil: s.profil, ok: false, status: res.status, reponse: await res.text().catch(() => "").slice(0, 150) });
+    } catch (e) { journal.push({ service, profil: s.profil, ok: false, exception: String(e.message || e) }); }
+  }
+  return json({ ok: true, total: subs.length, journal });
+}
+
 /* ---------- Listes d'envie (v2.5) ----------
  * data = JSON.stringify(db.listes) : [{ id, nom, ids, date, … }] — petites charges, chunks largement suffisants. */
 function listesValides(s) {
@@ -841,129 +859,4 @@ async function dbMigrateNotion(env, profil) {
     docs++;
   }
   /* D1 refuse les gros batchs : on découpe par lots de 50 requêtes */
-  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
-  return json({ ok: true, profil, bouteilles: pages.length, docs, maj: new Date().toISOString() });
-}
-
-export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-
-    /* Pages publiques : AVANT tout le reste — aucun risque de retomber sur l'app */
-    if (url.pathname === "/partage") return pagePartage(url.searchParams.get("b") || "");
-    if (url.pathname === "/apropos") return pageApropos();
-
-    /* L'actu du vin : RSS Vitisphere (FR), repli Terre de Vins. Cache edge 6 h,
-       côté app : localStorage 6 h, hors ligne : dernier titre connu. */
-    if (url.pathname === "/api/actu") {
-      const SOURCES = [
-        { nom: "Vitisphere", url: "https://vitisphere.com/rss" },
-        { nom: "Terre de Vins", url: "https://www.terredevins.com/feed" }
-      ];
-      for (const s of SOURCES) {
-        try {
-          const r = await fetch(s.url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; MaCave/2.9)" }, cf: { cacheTtl: 21600, cacheEverything: true } });
-          if (!r.ok) continue;
-          const xml = await r.text();
-          for (const bloc of xml.split(/<item[\s>]/i).slice(1)) {
-            const t = (bloc.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i) || [])[1];
-            const l = (bloc.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i) || [])[1];
-            if (!t || !l) continue;
-            const d = (bloc.match(/<pubDate>([\s\S]*?)<\/pubDate>/i) || [])[1] || "";
-            let age = "";
-            const ts = d ? Date.parse(d) : NaN;
-            if (!isNaN(ts)) {
-              const heures = Math.max(0, Math.round((Date.now() - ts) / 3600000));
-              age = heures < 1 ? "à l'instant" : heures < 24 ? "il y a " + heures + " h" : "il y a " + Math.round(heures / 24) + " j";
-            }
-            return json({ ok: true, titre: decodeEntities(t.trim()), url: l.trim(), source: s.nom, date: d, age });
-          }
-        } catch {}
-      }
-      return json({ ok: false, error: "actu indisponible" }, 502);
-    }
-
-    if (url.pathname === "/api/avatar") {
-      if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", AVATAR_TITLE, AVATAR_PROP);
-      if (request.method === "POST") return metaPost(request, env, AVATAR_TITLE, AVATAR_PROP, s => s.startsWith("data:image"));
-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
-    }
-
-    /* Préférences du soir (météo, position, bandeaux) : par profil, comme l'avatar */
-    if (url.pathname === "/api/prefs-soir") {
-      if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", PREFS_TITLE, PREFS_PROP);
-      if (request.method === "POST") return metaPost(request, env, PREFS_TITLE, PREFS_PROP, s => { try { const j = JSON.parse(s); return !!j && typeof j === "object"; } catch { return false; } });
-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
-    }
-
-    /* Historique des bouteilles bues : par profil, comme les préférences */
-    if (url.pathname === "/api/bues") {
-      if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", BUES_TITLE, BUES_PROP);
-      if (request.method === "POST") return metaPost(request, env, BUES_TITLE, BUES_PROP, s => { try { const j = JSON.parse(s); return Array.isArray(j) || (j && Array.isArray(j.bues)); } catch { return false; } });
-
-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
-    }
-
-    /* Listes d'envie + Envies d'achat : STOCKAGE PARTAGÉ — toutes les modifications
-       vont sur la base principale, visibles par tous les profils (PC, iPad…). */
-
-    if (url.pathname === "/api/listes") {
-      if (request.method === "GET") return metaGet(env, "thomas", LISTES_TITLE, LISTES_PROP);
-      if (request.method === "POST") return metaPost(request, env, LISTES_TITLE, LISTES_PROP, listesValides, "thomas");
-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
-    }
-
-    if (url.pathname === "/api/envies") {
-
-      if (request.method === "GET") return metaGet(env, "thomas", ENVIES_TITLE, ENVIES_PROP);
-      if (request.method === "POST") return metaPost(request, env, ENVIES_TITLE, ENVIES_PROP, listesValides, "thomas");
-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
-    }
-
-
-
-    /* --- Push en arrière-plan : abonnements (jeton d'appairage) + cron (secret) --- */
-    if (url.pathname === "/api/push-sub") {
-      if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
-      /* GET = diagnostic : combien d'appareils la base connaît (test curl) */
-      if (request.method === "GET") {
-        const subs = await pushLecture(env);
-        return json({ ok: true, n: subs.length, profils: subs.map(s => s.profil), maj: subs.map(s => s.maj), dernierEnvoi: subs.map(s => s.envoye || null) });
-      }
-      if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
-      return pushSubPost(request, env).catch(e => json({ ok: false, error: "Push sub : " + String(e.message || e) }, 500));
-    }
-
-    if (url.pathname === "/api/push-cron") {
-      if (!env.PUSH_CRON_SECRET || request.headers.get("x-cron-secret") !== env.PUSH_CRON_SECRET) return json({ ok: false, error: "Secret invalide" }, 401);
-      if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
-      return pushCron(env).catch(e => json({ ok: false, error: "Push cron : " + String(e.message || e) }, 500));
-    }
-
-    /* --- BDD D1 : tout exige le jeton d'appairage (401 sinon) --- */
-    if (url.pathname.startsWith("/api/db/") || url.pathname === "/api/migrate-notion") {
-      if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
-      if (!env.DB) return json({ ok: false, error: "Binding D1 absent : Settings > Functions > D1 bindings > DB" }, 500);
-      if (request.method === "GET" && url.pathname === "/api/db/pull") return dbPull(env, url.searchParams.get("profil") || "thomas").catch(e => json({ ok: false, error: "D1 pull : " + String(e.message || e) }, 500));
-      if (request.method === "POST" && url.pathname === "/api/db/push") return dbPush(request, env).catch(e => json({ ok: false, error: String(e.message || e) }, 500));
-      if (request.method === "GET" && url.pathname === "/api/db/photo") {
-        const k = url.searchParams.get("k") || "";
-        if (!env.PHOTOS) return json({ ok: false, error: "Binding KV absent : PHOTOS" }, 500);
-        const v = await env.PHOTOS.get(k);
-        if (!v) return json({ ok: false, error: "photo inconnue" }, 404);
-        return new Response(v, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "private, max-age=86400" } });
-      }
-      if (request.method === "POST" && url.pathname === "/api/migrate-notion") return dbMigrateNotion(env, url.searchParams.get("profil") || "thomas").catch(e => json({ ok: false, error: String(e.message || e) }, 500));
-      return json({ ok: false, error: "Route inconnue" }, 404);
-    }
-
-    if (url.pathname === "/api/sync-notion") {
-      if (request.method === "POST") return handleSyncPost(request, env);
-      if (request.method === "GET") return pullAllPages(env, url.searchParams.get("profil") || "thomas");
-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
-    }
-
-    /* Tout le reste : servir les fichiers statiques de la Pages */
-    return env.ASSETS.fetch(request);
-  },
-};
+  for (let i = 0; i < stmts.length;
