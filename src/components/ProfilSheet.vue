@@ -329,7 +329,7 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.12.1</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.12.2</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

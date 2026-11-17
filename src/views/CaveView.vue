@@ -495,7 +495,6 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           </div>
           <div class="flex flex-col items-center gap-1 shrink-0">
             <span v-if="b.quantite > 1" class="text-xs text-muted tabular-nums">×{{ b.quantite }}</span>
-            <button @click.stop="cave.boireDemande(b.id)" class="px-3 py-1.5 rounded-full bg-riesling/40 border border-riesling text-xs flex items-center gap-1" title="Sortir une bouteille"><Ic name="bottleEmpty" cls="w-4 h-4" /></button>
             <button @click.stop="cave.plusUn(b)" class="px-2 py-1.5 rounded-full border border-hairline text-[11px] text-accent" :title="'Racheter une ' + b.nom" :class="cave.db.filters.etage === 'Spiritueux' ? 'border-chartreuse/40 text-chartreuse' : ''">+1</button>
           </div>
         </div>
