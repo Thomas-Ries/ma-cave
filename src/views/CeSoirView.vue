@@ -231,7 +231,7 @@ function versEnvies() { router.push("/envies"); }
         <!-- Colonne visuelle : vraie photo si elle existe, silhouette sinon -->
         <button @click="cave.openFiche(vedette.b.id)" class="w-[72px] shrink-0 flex items-center justify-center overflow-hidden" :style="{ background: 'linear-gradient(to bottom, ' + vedetteCol + '33, #A8842C1A, #FAF6F1)' }" title="Ouvrir la fiche">
           <img v-if="vedette.b.photo" :src="vedette.b.photo" alt="" class="w-full h-full object-cover" />
-          <svg v-else viewBox="0 0 44 84" class="h-[72px] w-[38px] text-riesling-ink/60" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <svg v-else viewBox="0 0 44 84" class="h-[72px] w-[38px]" :style="{ color: vedetteCol + 'B3' }" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
             <path d="M19 5h6v13c0 3 8 5 8 12v44a6 6 0 0 1-6 6H17a6 6 0 0 1-6-6V30c0-7 8-9 8-12V5z" />
             <path d="M13 50h18" stroke-width="1.2" />
           </svg>
@@ -312,8 +312,8 @@ function versEnvies() { router.push("/envies"); }
         <div class="flex-1 min-w-0 flex flex-col gap-1">
           <span v-for="p in camembert.parts.slice(0, 4)" :key="p.cat" class="flex items-center gap-1.5 text-[11px] min-w-0">
             <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: p.color }"></span>
-            <span class="flex-1 truncate text-muted">{{ p.cat }}</span>
-            <span class="font-medium">{{ p.n }}</span>
+            <span class="min-w-0 truncate text-muted">{{ p.cat }}</span>
+            <span class="shrink-0 font-medium">{{ p.n }}</span>
           </span>
         </div>
         <!-- Chiffres clés -->
