@@ -300,6 +300,7 @@ export const useCave = defineStore("cave", {
         body.classList.add("no-scroll");
 
 
+
         body.style.top = (-this._scrollY) + "px";
       } else if (!locked && body.classList.contains("no-scroll")) {
         body.classList.remove("no-scroll");
@@ -598,6 +599,7 @@ export const useCave = defineStore("cave", {
     },
 
     /* Traduction des échecs de synchro en phrase humaine (pas de jargon dev) */
+
     raisonSync(res, j) {
 
       if (typeof navigator !== "undefined" && !navigator.onLine) return "tu es hors ligne — rien n’a pu partir";
@@ -898,6 +900,7 @@ export const useCave = defineStore("cave", {
     },
 
     /* ---------- Import ---------- */
+
     async parseImport(file) { return parseImportFile(file); },
     previewImport(rows) { return previewImport(rows, this.db); },
 
@@ -1198,6 +1201,7 @@ export const useCave = defineStore("cave", {
       return [cols.join(";"), ...this.db.bouteilles.map(b => cols.map(c => esc(b[c])).join(";"))].join("\r\n");
     },
     downloadBackup(manuel) {
+
       try {
         const light = JSON.parse(this.backupJSON());
         light.bouteilles = light.bouteilles.map(b => ({ ...b, photo: null }));
@@ -1319,7 +1323,17 @@ export const useCave = defineStore("cave", {
     /* Après chaque synchro BDD : rafraîchit le résumé du cron, silencieux */
     async pushMaj() {
       if (this.pushNotifEtat !== "on") return;
-      try { await pushMajDigest(this.d1Token(), this.pushDigest()); } catch {}
+      let ok = false;
+      try { ok = await pushMajDigest(this.d1Token(), this.pushDigest()); } catch { ok = false; }
+      /* Abonnement inconnu côté serveur (ex. enregistrement initial parti, base
+         repartie à zéro) : on se ré-enregistre — la permission est déjà donnée,
+         c'est silencieux. */
+      if (!ok) {
+        try {
+          await pushActiver(this.d1Token(), this.PROFIL, this.pushDigest());
+          this.d1Write("-pushon", true);
+        } catch {}
+      }
     },
 
     notifApogees() {
