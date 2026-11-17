@@ -891,9 +891,10 @@ export const useCave = defineStore("cave", {
       this.toast(t ? "Jeton enregistré — teste la connexion ci-dessous" : "BDD déliée de cet appareil");
     },
     d1Fetch(path, opts) {
-      const h = { ...(opts.headers || {}) };
+      const o = opts || {};
+      const h = { ...(o.headers || {}) };
       if (this.d1Token()) h["Authorization"] = "Bearer " + this.d1Token();
-      return fetch(path, { ...opts, headers: h });
+      return fetch(path, { ...o, headers: h });
     },
     d1Read(k, def) { try { return JSON.parse(localStorage.getItem(this.pKeys.db + k) ?? null) ?? def; } catch { return def; } },
     d1Write(k, v) { try { localStorage.setItem(this.pKeys.db + k, JSON.stringify(v)); } catch {} },
