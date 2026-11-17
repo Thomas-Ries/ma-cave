@@ -379,6 +379,15 @@ async function dbPush(request, env) {
   try { body = await request.json(); } catch {}
   const profil = body.profil || "thomas";
   const actions = Array.isArray(body.actions) ? body.actions.slice(0, 2000) : [];
+  /* Garde-fou serveur : un push ne peut JAMAIS supprimer plus de 5 bouteilles d'un coup,
+     sauf confirmation explicite côté client (dialogue « Supprimer N bouteilles »
+     → header x-del-force: 1). Protège la BDD (et les autres appareils) contre un vidage
+     accidentel, même si un client est bugué ou corrompu. */
+  const nbDels = actions.filter(a => a && a.t === "b-" && a.id).length;
+  const delForce = request.headers.get("x-del-force") === "1";
+  if (nbDels > 5 && !delForce) {
+    return json({ ok: false, error: "refus: " + nbDels + " suppressions d'un coup sans confirmation (x-del-force)", dels: nbDels }, 403);
+  }
   const db = await d1(env);
   const stmts = [], photos = [], photoDels = [];
   for (const a of actions) {

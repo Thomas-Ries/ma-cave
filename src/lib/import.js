@@ -171,7 +171,10 @@ function importKey(b) {
      sans cette normalisation, un pull Notion ré-ajoute toute la cave en doublons. */
   let c = normTxt(b.cave);
   if (c === "cave principale") c = "principale";
-  return [normTxt(b.nom), normTxt(b.cuvee), normMil(b.millesime), c].join(" | ");
+  /* Cépage dans la clé : sans lui, « Domaine X 2025 » en Gewurztraminer, Riesling et
+     Pinot Gris (3 lignes d'Excel distinctes) fusionnent en une seule fiche et les
+     exemplaires des autres cépages sont perdus (constaté sur l'import Sophie Schaal). */
+  return [normTxt(b.nom), normTxt(b.cuvee), normTxt(b.cepage), normMil(b.millesime), c].join(" | ");
 }
 
 /* Trouve la ligne existante correspondant à une ligne importée.
@@ -188,11 +191,13 @@ function trouveExistante(r, db) {
   const bouteilles = (db && db.bouteilles) || [];
   const exact = bouteilles.find(b => importKey(b) === importKey(r));
   if (exact) return exact;
-  const k = importKey(r).split(" | ");
+  const k = importKey(r).split(" | ");   /* [nom, cuvée, cépage, millésime, cave] */
   if (k[1] !== "") return null;             /* l'import CONNAÎT la cuvée : clé exacte ou rien */
   const cands = bouteilles.filter(b => {
     const p = importKey(b).split(" | ");
-    return p[0] === k[0] && p[2] === k[2] && p[3] === k[3];
+    if (p[0] !== k[0] || p[3] !== k[3] || p[4] !== k[4]) return false;
+    /* cépage : si l'import le connaît, il doit correspondre aussi */
+    return k[2] === "" || p[2] === k[2];
   });
   if (cands.length === 1) return cands[0];
   const sansCuvee = cands.filter(b => importKey(b).split(" | ")[1] === "");
