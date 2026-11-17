@@ -100,7 +100,7 @@ async function lierBdd() {
   d1Etat.value = st;
   d1Verif.value = st === "ok" ? "Connexion réussie : la BDD répond. Tu peux envoyer tes données."
     : st === "refuse" ? "Connexion refusée : le jeton ne correspond pas à MA_CAVE_TOKEN (ou la variable n'est pas encore déployée côté Cloudflare)."
-    : "BDD injoignable : vérifie ta connexion puis réessaie.";
+    : "BDD injoignable (statut : " + st + "). Ouvre la console du navigateur (F12) : le détail de l'erreur y est affiché sous [BDD].";
   d1Busy.value = false;
 }
 async function pousserBdd() { d1Busy.value = true; await cave.d1Push(true); d1Busy.value = false; }
@@ -336,7 +336,7 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">La synchro Notion continue en parallèle. « Envoyer » pousse tout cet appareil vers la BDD (première fois : migration complète, photos comprises). « Importer Notion » recopie la base Notion dans la BDD sans rien écraser de plus récent.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.1</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.2</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

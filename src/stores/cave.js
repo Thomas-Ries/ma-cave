@@ -956,12 +956,13 @@ export const useCave = defineStore("cave", {
         this.d1Write("-d1doc", empreintes);
         if (full) this.toast(`BDD à jour — ${actions.filter(a => a.t === "b").length} bouteille${actions.filter(a => a.t === "b").length > 1 ? "s" : ""} envoyée${actions.filter(a => a.t === "b").length > 1 ? "s" : ""}, ${j.photos || 0} photo${(j.photos || 0) > 1 ? "s" : ""}`);
         return true;
-      } catch { this.toast("Hors ligne — la BDD sera rattrapée au retour du réseau"); return false; }
+      } catch (e) { console.error("[BDD] push échoué :", e); this.toast("Hors ligne — la BDD sera rattrapée au retour du réseau"); return false; }
       finally { this.syncBusy(false); }
     },
     async d1Pull(manuel) {
       if (!this.d1Token()) return "off";
-      if (!navigator.onLine) return "offline";
+      /* PAS de test navigator.onLine : les PWA installées (iOS surtout) le signalent
+         faussement à false alors que le réseau marche — on laisse fetch échouer seul. */
       this.syncBusy(true);
       try {
         const res = await this.d1Fetch("/api/db/pull?profil=" + this.PROFIL);
@@ -1023,7 +1024,7 @@ export const useCave = defineStore("cave", {
         /* Photos manquantes : les récupérer en tâche de fond */
         this.d1Photos();
         return "ok";
-      } catch { if (manuel) this.toast("Récupération BDD impossible : coupe réseau ?"); return "fail"; }
+      } catch (e) { console.error("[BDD] pull échoué :", e); if (manuel) this.toast("Récupération BDD impossible : coupe réseau ?"); return "fail"; }
       finally { this.syncBusy(false); }
     },
     async d1Photos() {
