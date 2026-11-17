@@ -90,11 +90,14 @@ function autreIdee() {
   if (ceSoir.value) pickSoir(true);
   else plaisirIdx.value++;
 }
-function sortirSoir() {
+function boireSoir() {
   const b = vedette.value?.b;
   if (!b) return;
   ceSoir.value = null; soirOff.value = true; plaisirOff.value = true;
-  cave.toast(`${b.nom} sortie pour ce soir — santé !`);
+  /* Même flux que « Boire » depuis la fiche : décrémente le stock, inscrit
+     l'entrée dans le carnet des bues et ouvre la fiche verdict.
+     Quantité > 1 → le CombienModal demande combien (géré par le store). */
+  cave.boireDemande(b.id);
 }
 function frigoSoir() {
   const b = vedette.value?.b;
@@ -259,7 +262,7 @@ function versEnvies() { router.push("/envies"); }
             <span v-for="r in vedette.r" :key="r" class="text-[10px] px-1.5 py-0.5 rounded-full bg-riesling/40 text-ink">{{ r }}</span>
           </div>
           <div class="flex gap-2 mt-3">
-            <button @click="sortirSoir" class="flex-1 py-2.5 rounded-xl2 bg-accent text-white text-[11px] flex items-center justify-center gap-1.5"><Ic name="bottleEmpty" cls="w-3.5 h-3.5" /><span class="whitespace-nowrap">Sortir</span></button>
+            <button @click="boireSoir" class="flex-1 py-2.5 rounded-xl2 bg-accent text-white text-[11px] flex items-center justify-center gap-1.5"><Ic name="bottleEmpty" cls="w-3.5 h-3.5" /><span class="whitespace-nowrap">Boire</span></button>
             <button @click="frigoSoir" class="flex-1 py-2.5 rounded-xl2 border border-accent/40 text-accent text-[11px] flex items-center justify-center gap-1.5"><Ic name="snow" cls="w-3.5 h-3.5" /><span class="whitespace-nowrap">Au frigo</span></button>
             <button @click="autreIdee" class="flex-1 py-2.5 rounded-xl2 border border-gold/60 text-gold text-[11px] flex items-center justify-center gap-1.5" title="Proposer une autre bouteille"><Ic name="sparkles" cls="w-3.5 h-3.5" /><span class="whitespace-nowrap">Autre idée</span></button>
           </div>
