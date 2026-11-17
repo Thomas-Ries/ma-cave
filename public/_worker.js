@@ -299,6 +299,7 @@ async function hkdf(ikm, salt, info, len) {
 
 
 
+
 /* Chiffre la charge puis signe le VAPID — renvoie la Response du service push. */
 async function webpush(env, sub, payload) {
   if (!env.VAPID_JWK) throw new Error("Variable VAPID_JWK absente (Settings > Functions > Environment variables)");
@@ -392,6 +393,7 @@ async function pushSubPost(request, env) {
 async function pushCron(env) {
   const subs = await pushLecture(env);
   let envoyees = 0, mortes = 0, erreurs = 0;
+  const details = []; /* diagnostics : la CAUSE de chaque échec (statut + réponse du service push) */
   for (const s of subs) {
     const d = s.digest || {};
     const boire = d.boire || 0, passe = d.passe || 0;
@@ -408,11 +410,14 @@ async function pushCron(env) {
           await env.DB.prepare("UPDATE push_subs SET envoye = ?, cle = ? WHERE endpoint = ?").bind(new Date().toISOString(), cle, s.endpoint).run();
         }
         else if (res.status === 404 || res.status === 410) { mortes++; await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run(); }
-        else erreurs++;
-      } catch { erreurs++; }
+        else {
+          erreurs++;
+          try { details.push("push " + res.status + " : " + (await res.text()).slice(0, 150)); } catch { details.push("push " + res.status); }
+        }
+      } catch (e) { erreurs++; details.push("exception : " + String(e.message || e)); }
     }
   }
-  return json({ ok: true, envoyees, mortes, erreurs, total: await pushNombre(env) });
+  return json({ ok: true, envoyees, mortes, erreurs, total: await pushNombre(env), details });
 }
 
 /* ---------- Listes d'envie (v2.5) ----------
@@ -594,6 +599,7 @@ const PUB_CSS = `
   .cta p { font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-top:10px; }
   .erreur { text-align:center; padding:60px 20px; font-style:italic; color:var(--muted); }
   h1.grand { font-size:42px; }
+
   .vitrine { position:relative; height:196px; margin:26px -6px 10px; text-align:center; }
   .badge-note { position:absolute; left:calc(50% + 52px); top:72px; background:var(--riesling); color:var(--ink); width:74px; height:74px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(43,39,36,.18); z-index:3; }
 
@@ -894,6 +900,7 @@ export default {
     }
 
     if (url.pathname === "/api/envies") {
+
       if (request.method === "GET") return metaGet(env, "thomas", ENVIES_TITLE, ENVIES_PROP);
       if (request.method === "POST") return metaPost(request, env, ENVIES_TITLE, ENVIES_PROP, listesValides, "thomas");
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
