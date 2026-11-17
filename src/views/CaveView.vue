@@ -9,7 +9,6 @@ import { uid, CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
 import Ic from "../components/Ic.vue";
-import BottleSvg from "../components/BottleSvg.vue";
 import FiltresSheet from "../components/FiltresSheet.vue";
 import ListesSheet from "../components/ListesSheet.vue";
 import ImportPreview from "../components/ImportPreview.vue";
@@ -486,7 +485,8 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
              :style="sw.id === b.id && sw.dx < 0 ? 'transform:translateX(' + sw.dx + 'px)' : ''"
              @click="sw.id === b.id && sw.dx < -10 ? null : openFiche(b.id)"
              @pointerdown="swipeStart(b, $event)" @pointermove="swipeMove($event)" @pointerup="swipeEnd(b)" @pointercancel="sw.value = { id: null, x: 0, dx: 0 }">
-          <BottleSvg :cat="b.categorie" cls="w-8 h-16 shrink-0" />
+          <!-- Pastille catégorie : rond de couleur, plus lisible et plus compact que la bouteille -->
+          <span class="w-9 h-9 rounded-full shrink-0 flex items-center justify-center" :style="'background:' + (cave.CAT_COLORS[b.categorie] || '#8A7F75') + '22'"><span class="w-3.5 h-3.5 rounded-full" :style="'background:' + (cave.CAT_COLORS[b.categorie] || '#8A7F75')"></span></span>
           <div class="flex-1 min-w-0">
             <p class="font-serif leading-tight truncate">{{ splitNom(b).domaine }}</p>
             <p v-if="splitNom(b).cuvee" class="text-xs text-muted truncate">{{ splitNom(b).cuvee }}</p>
