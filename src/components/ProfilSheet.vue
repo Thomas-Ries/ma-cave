@@ -427,7 +427,7 @@ function confirmDisable() {
           <button @click="togglePush" class="shrink-0 text-xs px-3 py-1.5 rounded-full" :class="pushNotif === 'on' ? 'bg-cream border border-hairline text-muted' : 'bg-accent text-white'">{{ pushNotif === 'on' ? 'Désactiver' : 'Activer' }}</button>
         </div>
         <p class="text-[10px] text-muted mt-2 leading-relaxed">{{ pushAide }}</p>
-        <p v-if="pushNotif === 'on'" class="text-[10px] text-gold mt-1.5 font-medium">{{ cave.pushDigest.boire }} bouteille{{ cave.pushDigest.boire > 1 ? 's' : '' }} à l'apogée suivie{{ cave.pushDigest.boire > 1 ? 's' : '' }} par le rappel du soir</p>
+        <p v-if="pushNotif === 'on'" class="text-[10px] text-gold mt-1.5 font-medium">{{ cave.pushDigest().boire }} bouteille{{ cave.pushDigest().boire > 1 ? 's' : '' }} à l'apogée suivie{{ cave.pushDigest().boire > 1 ? 's' : '' }} par le rappel du soir</p>
       </div>
 
 
