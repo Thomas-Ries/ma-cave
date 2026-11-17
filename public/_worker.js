@@ -750,7 +750,7 @@ export default {
     if (url.pathname.startsWith("/api/db/") || url.pathname === "/api/migrate-notion") {
       if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
       if (!env.DB) return json({ ok: false, error: "Binding D1 absent : Settings > Functions > D1 bindings > DB" }, 500);
-      if (request.method === "GET" && url.pathname === "/api/db/pull") return dbPull(env, url.searchParams.get("profil") || "thomas");
+      if (request.method === "GET" && url.pathname === "/api/db/pull") return dbPull(env, url.searchParams.get("profil") || "thomas").catch(e => json({ ok: false, error: "D1 pull : " + String(e.message || e) }, 500));
       if (request.method === "POST" && url.pathname === "/api/db/push") return dbPush(request, env).catch(e => json({ ok: false, error: String(e.message || e) }, 500));
       if (request.method === "GET" && url.pathname === "/api/db/photo") {
         const k = url.searchParams.get("k") || "";
