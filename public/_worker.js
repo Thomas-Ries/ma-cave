@@ -163,10 +163,12 @@ const PREFS_TITLE = "Préférences soir";
 const PREFS_PROP = "Prefs soir (JSON)";
 const BUES_TITLE = "Bues (historique)";
 const BUES_PROP = "Bues (JSON)";
+const PUSH_TITLE = "Push (abonnements)";
+const PUSH_PROP = "Push (JSON)";
 
 function isMetaPage(p) {
   const t = ((p.properties?.Nom?.title) || []).map(x => x.plain_text || "").join("");
-  return t === AVATAR_TITLE || t === LISTES_TITLE || t === ENVIES_TITLE || t === PREFS_TITLE || t === BUES_TITLE;
+  return t === AVATAR_TITLE || t === LISTES_TITLE || t === ENVIES_TITLE || t === PREFS_TITLE || t === BUES_TITLE || t === PUSH_TITLE;
 }
 
 function toChunks(s, n = 1900) {
@@ -267,6 +269,147 @@ async function metaPost(request, env, title, propName, validate, profilForce) {
   } catch (e) {
     return json({ ok: false, error: String(e.message || e) }, 500);
   }
+}
+
+/* ---------- PUSH en arrière-plan (v2.20) ----------
+ * Web Push standard implémenté à la main en WebCrypto (le _worker.js reste un
+ * fichier unique sans npm) : chiffrement aes128gcm (RFC 8291) + VAPID ES256 (RFC 8292).
+ * Les abonnements vivent dans la méta-page « Push (abonnements) » (base thomas,
+ * partagée) ; l'app la rafraîchit à chaque synchro BDD (action "digest").
+ * Le cron Cloudflare (cron/ma-cave-push-cron.js) appelle POST /api/push-cron
+ * chaque soir avec le secret PUSH_CRON_SECRET. */
+function b64url(s) { return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); }
+function bytesB64url(u8) { let s = ""; for (const b of u8) s += String.fromCharCode(b); return b64url(s); }
+function b64urlBytes(str) {
+  const s = str.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(s + "=".repeat((4 - s.length % 4) % 4));
+  const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+function concatBytes(...arrs) {
+  const u = new Uint8Array(arrs.reduce((s, a) => s + a.length, 0));
+  let o = 0;
+  for (const a of arrs) { u.set(a, o); o += a.length; }
+  return u;
+}
+async function hkdf(ikm, salt, info, len) {
+  const k = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, k, len * 8));
+}
+
+
+/* Chiffre la charge puis signe le VAPID — renvoie la Response du service push. */
+async function webpush(env, sub, payload) {
+  if (!env.VAPID_JWK) throw new Error("Variable VAPID_JWK absente (Settings > Functions > Environment variables)");
+  const jwk = JSON.parse(env.VAPID_JWK);
+  const te = new TextEncoder();
+  /* Chiffrement aes128gcm : secret partagé ECDH (clé de l'appareil × éphémère serveur) */
+  const uaBytes = b64urlBytes(sub.p256dh);
+  const uaKey = await crypto.subtle.importKey("raw", uaBytes, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const asPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const asRaw = new Uint8Array(await crypto.subtle.exportKey("raw", asPair.publicKey));
+  const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, asPair.privateKey, 256));
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const ikm = await hkdf(ecdh, salt, concatBytes(te.encode("WebPush: info"), uaBytes, asRaw), 32);
+  const cek = await hkdf(ikm, salt, te.encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await hkdf(ikm, salt, te.encode("Content-Encoding: nonce\0"), 12);
+  const chiffre = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: nonce },
+    await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["encrypt"]),
+    concatBytes(te.encode(JSON.stringify(payload)), new Uint8Array([2])) /* un seul enregistrement, pad vide */
+  ));
+  const rs = new Uint8Array(4);
+  new DataView(rs.buffer).setUint32(0, 4096);
+  const corps = concatBytes(salt, rs, new Uint8Array([65]), asRaw, chiffre);
+  /* VAPID : JWT ES256 signé par la clé privée du serveur (VAPID_JWK) */
+  const privee = await crypto.subtle.importKey("jwk", jwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const pubRaw = new Uint8Array(await crypto.subtle.exportKey("raw",
+    await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y }, { name: "ECDH", namedCurve: "P-256" }, true, [])));
+  const h = b64url(JSON.stringify({ typ: "JWT", alg: "ES256" }));
+  const p = b64url(JSON.stringify({ aud: new URL(sub.endpoint).origin, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: env.VAPID_SUB || "mailto:contact@family-wine-cellar.pages.dev" }));
+  const sig = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, privee, te.encode(h + "." + p)));
+  return fetch(sub.endpoint, { method: "POST", body: corps, headers: {
+    "TTL": "86400", "Urgency": "normal",
+    "Content-Type": "application/octet-stream", "Content-Encoding": "aes128gcm",
+    "Authorization": "vapid t=" + h + "." + p + "." + bytesB64url(sig) + ", k=" + bytesB64url(pubRaw),
+  } });
+}
+
+function pushValides(s) {
+  try { const j = JSON.parse(s); return !!j && Array.isArray(j.subs); } catch { return false; }
+}
+async function pushLecture(env) {
+  const r = await metaGet(env, "thomas", PUSH_TITLE, PUSH_PROP);
+  if (!r?.ok || !r.data) return [];
+  try { const j = JSON.parse(r.data); return Array.isArray(j.subs) ? j.subs : []; } catch { return []; }
+}
+async function pushEcriture(env, subs) {
+  /* réutilise metaPost via une fausse requête interne (chunks, retry 429, cache d'id) */
+  const fake = new Request("https://interne/push", { method: "POST", body: JSON.stringify({ profil: "thomas", data: JSON.stringify({ subs }) }) });
+  return metaPost(fake, env, PUSH_TITLE, PUSH_PROP, pushValides, "thomas");
+}
+
+/* POST /api/push-sub : abonner, rafraîchir le résumé, ou désabonner (jeton requis) */
+async function pushSubPost(request, env) {
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const subs = await pushLecture(env);
+  if (body.action === "sub") {
+    const s = body.sub || {};
+    if (!s.endpoint || !s.keys || !s.keys.p256dh || !s.keys.auth) return json({ ok: false, error: "Abonnement invalide" }, 400);
+    const ent = {
+      endpoint: s.endpoint, p256dh: s.keys.p256dh, auth: s.keys.auth,
+      profil: body.profil || "thomas", digest: body.digest || null, maj: new Date().toISOString(),
+    };
+    const i = subs.findIndex(x => x.endpoint === s.endpoint);
+    if (i >= 0) { ent.envoye = subs[i].envoye; ent.cle = subs[i].cle; subs[i] = ent; }
+    else { subs.push(ent); if (subs.length > 20) subs.shift(); /* 20 appareils max, les plus vieux tombent */ }
+    await pushEcriture(env, subs);
+    return json({ ok: true, n: subs.length });
+  }
+  if (body.action === "digest") {
+    const i = subs.findIndex(x => x.endpoint === body.endpoint);
+    if (i < 0) return json({ ok: false, error: "Abonnement inconnu" }, 404);
+    subs[i].digest = body.digest || null;
+    subs[i].maj = new Date().toISOString();
+    await pushEcriture(env, subs);
+    return json({ ok: true });
+  }
+  if (body.action === "off") {
+    const reste = subs.filter(x => x.endpoint !== body.endpoint);
+    await pushEcriture(env, reste);
+    return json({ ok: true, n: reste.length });
+  }
+  return json({ ok: false, error: "Action inconnue" }, 400);
+}
+
+/* POST /api/push-cron (secret) : envoie le rappel d'apogées aux abonnés concernés.
+   Anti-spam : au plus un push par appareil tous les 6 jours, sauf si le résumé change. */
+async function pushCron(env) {
+  const subs = await pushLecture(env);
+  let envoyees = 0, mortes = 0, erreurs = 0, modifie = false;
+  const reste = [];
+  for (const s of subs) {
+    const d = s.digest || {};
+    const boire = d.boire || 0, passe = d.passe || 0;
+    const cle = JSON.stringify([boire, passe, d.bientot || 0, d.top || []]);
+    const jours = s.envoye ? (Date.now() - Date.parse(s.envoye)) / 86400000 : Infinity;
+    if (boire + passe > 0 && (s.cle !== cle || jours >= 6)) {
+      let corps = boire + " bouteille" + (boire > 1 ? "s" : "") + " dans sa fenêtre d'apogée";
+      if (passe > 0) corps += " · " + passe + " passée" + (passe > 1 ? "s" : "") + " l'apogée";
+      const noms = (d.top || []).slice(0, 3).join(", ");
+      try {
+        const res = await webpush(env, s, { titre: "Ma Cave — apogées", corps: corps + (noms ? " — " + noms : ""), tag: "ma-cave-push" });
+        if (res.ok || res.status === 201) { envoyees++; s.envoye = new Date().toISOString(); s.cle = cle; modifie = true; }
+        else if (res.status === 404 || res.status === 410) { mortes++; modifie = true; continue; } /* appareil désabonné → nettoyé */
+        else erreurs++;
+      } catch { erreurs++; }
+    }
+    reste.push(s);
+  }
+  if (modifie) await pushEcriture(env, reste);
+  return json({ ok: true, envoyees, mortes, erreurs, total: reste.length });
 }
 
 /* ---------- Listes d'envie (v2.5) ----------
@@ -456,6 +599,7 @@ const PUB_CSS = `
   .ligne:last-of-type { border-bottom:0; }
   .ligne .t b { font-weight:normal; font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:2px; }
   .ligne .t span { color:var(--muted); font-size:12.5px; font-style:italic; }
+
   .verre { display:inline-flex; }
 `;
 
@@ -748,6 +892,19 @@ export default {
       if (request.method === "GET") return metaGet(env, "thomas", ENVIES_TITLE, ENVIES_PROP);
       if (request.method === "POST") return metaPost(request, env, ENVIES_TITLE, ENVIES_PROP, listesValides, "thomas");
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
+    }
+
+    /* --- Push en arrière-plan : abonnements (jeton d'appairage) + cron (secret) --- */
+    if (url.pathname === "/api/push-sub") {
+      if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
+      if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
+      return pushSubPost(request, env).catch(e => json({ ok: false, error: "Push sub : " + String(e.message || e) }, 500));
+    }
+
+    if (url.pathname === "/api/push-cron") {
+      if (!env.PUSH_CRON_SECRET || request.headers.get("x-cron-secret") !== env.PUSH_CRON_SECRET) return json({ ok: false, error: "Secret invalide" }, 401);
+      if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
+      return pushCron(env).catch(e => json({ ok: false, error: "Push cron : " + String(e.message || e) }, 500));
     }
 
     /* --- BDD D1 : tout exige le jeton d'appairage (401 sinon) --- */
