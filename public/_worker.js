@@ -299,6 +299,7 @@ async function hkdf(ikm, salt, info, len) {
 }
 
 
+
 /* Chiffre la charge puis signe le VAPID — renvoie la Response du service push. */
 async function webpush(env, sub, payload) {
   if (!env.VAPID_JWK) throw new Error("Variable VAPID_JWK absente (Settings > Functions > Environment variables)");
@@ -345,9 +346,13 @@ async function pushLecture(env) {
   try { const j = JSON.parse(r.data); return Array.isArray(j.subs) ? j.subs : []; } catch { return []; }
 }
 async function pushEcriture(env, subs) {
-  /* réutilise metaPost via une fausse requête interne (chunks, retry 429, cache d'id) */
+  /* réutilise metaPost via une fausse requête interne (chunks, retry 429, cache d'id) ;
+     renvoie { status, j } pour que l'APPELANT voie les échecs Notion (silencieux avant v2.20.3) */
   const fake = new Request("https://interne/push", { method: "POST", body: JSON.stringify({ profil: "thomas", data: JSON.stringify({ subs }) }) });
-  return metaPost(fake, env, PUSH_TITLE, PUSH_PROP, pushValides, "thomas");
+  const res = await metaPost(fake, env, PUSH_TITLE, PUSH_PROP, pushValides, "thomas");
+  let j = null;
+  try { j = await res.json(); } catch {}
+  return { status: res.status, j, texte: j && !j.ok ? (j.error || "statut " + res.status) : null };
 }
 
 /* POST /api/push-sub : abonner, rafraîchir le résumé, ou désabonner (jeton requis) */
@@ -365,7 +370,8 @@ async function pushSubPost(request, env) {
     const i = subs.findIndex(x => x.endpoint === s.endpoint);
     if (i >= 0) { ent.envoye = subs[i].envoye; ent.cle = subs[i].cle; subs[i] = ent; }
     else { subs.push(ent); if (subs.length > 20) subs.shift(); /* 20 appareils max, les plus vieux tombent */ }
-    await pushEcriture(env, subs);
+    const w = await pushEcriture(env, subs);
+    if (!w.j || !w.j.ok) return json({ ok: false, error: "Enregistrement Notion échoué : " + (w.texte || "inconnu") }, 502);
     return json({ ok: true, n: subs.length });
   }
   if (body.action === "digest") {
@@ -593,6 +599,7 @@ const PUB_CSS = `
   h1.grand { font-size:42px; }
   .vitrine { position:relative; height:196px; margin:26px -6px 10px; text-align:center; }
   .badge-note { position:absolute; left:calc(50% + 52px); top:72px; background:var(--riesling); color:var(--ink); width:74px; height:74px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(43,39,36,.18); z-index:3; }
+
   .badge-note small { font-size:8.5px; letter-spacing:.22em; text-transform:uppercase; }
   .badge-note b { font-size:26px; font-weight:normal; line-height:1.05; }
   .ligne { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--hairline); text-align:left; }
@@ -894,9 +901,15 @@ export default {
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
     }
 
+
     /* --- Push en arrière-plan : abonnements (jeton d'appairage) + cron (secret) --- */
     if (url.pathname === "/api/push-sub") {
       if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
+      /* GET = diagnostic : combien d'appareils la base connaît (test curl) */
+      if (request.method === "GET") {
+        const subs = await pushLecture(env);
+        return json({ ok: true, n: subs.length, profils: subs.map(s => s.profil), maj: subs.map(s => s.maj) });
+      }
       if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
       return pushSubPost(request, env).catch(e => json({ ok: false, error: "Push sub : " + String(e.message || e) }, 500));
     }
