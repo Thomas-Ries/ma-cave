@@ -21,7 +21,8 @@ function dseg(px, py, ax, ay, bx, by) {
 }
 
 /* cubique de Bézier échantillonnée en segments */
-function cubic(p0, c1, c2, p3, out) {
+function cubic(p0, c1, c2, p3) {
+  const out = [];
   const n = 10;
   let px = p0[0], py = p0[1];
   for (let i = 1; i <= n; i++) {
@@ -30,47 +31,43 @@ function cubic(p0, c1, c2, p3, out) {
     const y = u * u * u * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * p3[1];
     out.push([px, py, x, y]); px = x; py = y;
   }
+  return out;
 }
 
 /* Les 7 sous-chemins de l'icône « cave », en coordonnées 120 (icône 24 × 5) */
 const SEGS = [];
 {
   const push = (...pts) => { for (let i = 0; i + 1 < pts.length; i += 2) SEGS.push([pts[i], pts[i + 1], pts[i + 2], pts[i + 3]]); };
-  const cap = (x0, y0, w, apex, x1, y1) => cubic([x0, y0], [x0, y0 - 4], [x0 + w / 2 - 3.5, apex], [x0 + w / 2, apex], SEGS) || cubic([x0 + w / 2, apex], [x0 + w / 2 + 3.5, apex], [x1, y1 - 4], [x1, y1], SEGS);
   /* voûte */
   push(20, 105, 20, 52.5);
-  cubic([20, 52.5], [20, 30.5], [38, 17.5], [60, 17.5], SEGS);
-  cubic([60, 17.5], [82, 17.5], [100, 30.5], [100, 52.5], SEGS);
+  SEGS.push(...cubic([20, 52.5], [20, 30.5], [38, 17.5], [60, 17.5]));
+  SEGS.push(...cubic([60, 17.5], [82, 17.5], [100, 30.5], [100, 52.5]));
   push(100, 52.5, 100, 105);
   /* bouteille 1 : corps + goulot */
   push(34.5, 105, 34.5, 86);
-  cubic([34.5, 86], [34.5, 82], [38, 78.5], [42, 78.5], SEGS);
-  cubic([42, 78.5], [46, 78.5], [49.5, 82], [49.5, 86], SEGS);
+  SEGS.push(...cubic([34.5, 86], [34.5, 82], [38, 78.5], [42, 78.5]));
+  SEGS.push(...cubic([42, 78.5], [46, 78.5], [49.5, 82], [49.5, 86]));
   push(49.5, 86, 49.5, 105);
   push(39.5, 79, 39.5, 68, 44.5, 68, 44.5, 79);
   /* bouteille 2 (la grande du milieu) */
   push(52, 105, 52, 79);
-  cubic([52, 79], [52, 74.5], [56, 71], [60, 71], SEGS);
-  cubic([60, 71], [64, 71], [68, 74.5], [68, 79], SEGS);
+  SEGS.push(...cubic([52, 79], [52, 74.5], [56, 71], [60, 71]));
+  SEGS.push(...cubic([60, 71], [64, 71], [68, 74.5], [68, 79]));
   push(68, 79, 68, 105);
   push(57.5, 78, 57.5, 63.5, 62.5, 63.5, 62.5, 78);
   /* bouteille 3 */
   push(70.5, 105, 70.5, 86);
-  cubic([70.5, 86], [70.5, 82], [74, 78.5], [78, 78.5], SEGS);
-  cubic([78, 78.5], [82, 78.5], [85.5, 82], [85.5, 86], SEGS);
+  SEGS.push(...cubic([70.5, 86], [70.5, 82], [74, 78.5], [78, 78.5]));
+  SEGS.push(...cubic([78, 78.5], [82, 78.5], [85.5, 82], [85.5, 86]));
   push(85.5, 86, 85.5, 105);
   push(75.5, 79, 75.5, 68, 80.5, 68, 80.5, 79);
 }
-/* boîtes englobantes par groupe pour accélérer */
+/* boîtes englobantes par groupes de 4 segments pour accélérer */
 const BBOXES = [];
-for (let i = 0; i < SEGS.length; ) {
+for (let i = 0; i < SEGS.length; i += 4) {
   const xs = [], ys = [];
-  for (const s of [SEGS[i], SEGS[i + 1], SEGS[i + 2], SEGS[i + 3]]) {
-    if (!s) break;
-    xs.push(s[0], s[2]); ys.push(s[1], s[3]);
-  }
-  if (xs.length) BBOXES.push({ x0: Math.min(...xs) - 4, x1: Math.max(...xs) + 4, y0: Math.min(...ys) - 4, y1: Math.max(...ys) + 4, i0: i, n: Math.min(4, SEGS.length - i) });
-  i += 4;
+  for (const s of SEGS.slice(i, i + 4)) { xs.push(s[0], s[2]); ys.push(s[1], s[3]); }
+  BBOXES.push({ x0: Math.min(...xs) - 4, x1: Math.max(...xs) + 4, y0: Math.min(...ys) - 4, y1: Math.max(...ys) + 4, i0: i, n: Math.min(4, SEGS.length - i) });
 }
 
 function scene(x, y) {
