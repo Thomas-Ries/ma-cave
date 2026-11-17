@@ -1,4 +1,4 @@
-<script setup>
+successfully downloaded text file (SHA: 56fd78860e39577915a6413930bf8f8cb8955ddc)<script setup>
 /* Gestion du profil : avatar + code de déverrouillage optionnel (activable, modifiable, désactivable).
    Le code admin de Thomas débloque n'importe quel profil en cas d'oubli. */
 import { ref, computed, watch } from "vue";
@@ -424,7 +424,7 @@ function confirmDisable() {
       </div>
 
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.22.0</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.25.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
