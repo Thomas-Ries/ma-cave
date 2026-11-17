@@ -3,10 +3,13 @@
  *   1. Appellation précise (Morgon, Châteauneuf-du-Pape, Sauternes…)
  *   2. Cépage × région > cépage > région × catégorie > catégorie
  *   3. Mentions régionalisées (grand cru, premier cru, cru classé, VT/SGN…)
+ *   4. Modificateurs : format (magnum / demi-bouteille), grand millésime,
+ *      millésime délicat.
  * Toujours écrasable à la main — la suggestion affiche sa règle.
- * Sources des fenêtres : guide par appellation (Beaujolais/Alsace 2026),
- * règle empirique Bourgogne (régionale 5-7 / village 7-10 / 1er cru 10-15 / GC 15+),
- * catégories Champagne (BSA 2-5 / millésimé 10-20+ / prestige 15+), Cornas 10-20…
+ * Sources des fenêtres (v2.13) : Apogenio (guide croisé Hachette /
+ * Bettane+Desseauve / Wine Spectator), Vinabox (tableaux CIVB/BIVB/InterLoire),
+ * Tire-Bouchon (fenêtres par appellation + facteurs tanins/acidité/sucre),
+ * règles empiriques Bourgogne (village 7-10 / 1er cru 10-15 / GC 15+).
  */
 
 const YEAR = new Date().getFullYear();
@@ -16,89 +19,116 @@ const CATS = ["Rouge", "Blanc", "Rosé", "Champagne", "Crémant", "Effervescent"
 /* ---------- 1. FENÊTRES PAR APPELLATION ----------
  * [debut, fin] en années de garde après le millésime.
  * Matchées sur nom + cuvée + appellation + région (normalisés sans accents).
- * Précises : elles écrasent les règles cépage/région génériques. */
+ * Précises : elles écrasent les règles cépage/région génériques.
+ * Important : les libellés les plus longs doivent précéder les courts
+ * ("chablis grand cru" avant "chablis", "montrachet" en dernier…). */
 const PAR_APPELLATION = {
-  /* Bordeaux — hiérarchie des classements */
-  "1er grand cru classe": [12, 40], "premier grand cru classe": [12, 40], "grand cru classe": [8, 30],
-  "cru bourgeois": [4, 12],
-  "pauillac": [8, 25], "saint julien": [8, 25], "margaux": [7, 20], "saint estephe": [8, 25],
-  "pomerol": [5, 18], "saint emilion": [5, 15], "saint emilion grand cru": [5, 18],
-  "graves": [4, 12], "pessac leognan": [5, 15],
+  /* Bordeaux — hiérarchie des classements (cru classé : 10-35 ans) */
+  "premier grand cru classe": [12, 40], "1er grand cru classe": [12, 40],
+  "grand cru classe": [10, 35], "cru bourgeois": [6, 15],
+  "pauillac": [10, 30], "saint julien": [10, 28], "margaux": [9, 25], "saint estephe": [10, 28],
+  "listrac medoc": [6, 15], "moulis": [6, 15], "haut medoc": [6, 15], "medoc": [3, 10],
+  "pomerol": [7, 20], "lalande de pomerol": [5, 14],
+  "saint emilion grand cru": [8, 25], "saint emilion": [5, 15], "fronsac": [4, 10],
+  "graves": [5, 12], "pessac leognan": [6, 15],
   "bordeaux superieur": [2, 8], "bordeaux super": [2, 8],
-  "sauternes": [10, 35], "barsac": [10, 30],
-  /* Bourgogne — hiérarchie régionale / village / cru */
-  "chablis grand cru": [8, 20], "chablis premier cru": [5, 12], "chablis": [3, 8],
-  "gevrey chambertin": [6, 18], "chambolle musigny": [6, 18], "vosne romanee": [6, 20],
-  "morey saint denis": [6, 18], "chambertin": [10, 25], "musigny": [10, 25],
-  "nuits saint georges": [6, 15], "volnay": [5, 12], "pommard": [5, 14],
-  "mercurey": [4, 10], "givry": [3, 8], "rully": [3, 8],
-  "meursault": [5, 14], "puligny montrachet": [6, 16], "chassagne montrachet": [6, 16],
-  "montrachet": [10, 25], "corton charlemagne": [8, 20], "corton": [6, 15],
-  "pouilly fuisse": [4, 10], "saint veran": [2, 6], "macon": [2, 6],
-  /* Alsace — la hiérarchie des Grands Crus est dans MENTIONS (régionalisée) */
+  "sauternes": [15, 40], "barsac": [12, 35], "cerons": [8, 20],
+  /* Bourgogne — GC 12-30 ans, 1ers crus 8-20, villages 5-15 */
+  "clos de vougeot": [10, 25],
+  "grands echezeaux": [10, 25], "echezeaux": [8, 20],
+  "vosne romanee": [10, 25], "gevrey chambertin": [8, 20], "chambolle musigny": [8, 20],
+  "chambertin": [12, 30], "musigny": [12, 30],
+  "morey saint denis": [8, 20], "nuits saint georges": [7, 18],
+  "volnay": [6, 14], "pommard": [6, 15], "aloxe corton": [7, 18],
+  "corton charlemagne": [10, 25], "corton": [8, 20],
+  "batard montrachet": [10, 30], "puligny montrachet": [8, 20], "chassagne montrachet": [8, 20],
+  "montrachet": [10, 30],
+  "chablis grand cru": [10, 25], "chablis premier cru": [6, 15], "chablis": [3, 8],
+  "meursault": [6, 16], "pouilly fuisse": [5, 12], "saint veran": [2, 6], "macon": [2, 6],
+  "mercurey": [5, 12], "santenay": [4, 10], "givry": [3, 8], "rully": [3, 8],
   /* Beaujolais — les crus se gardent bien plus que le Beaujolais simple */
-  "moulin a vent": [6, 15], "morgon": [5, 12], "chenas": [5, 12], "julienas": [4, 10],
-  "fleurie": [4, 10], "cote de brouilly": [4, 9], "brouilly": [3, 7],
-  "regnie": [3, 7], "chiroubles": [3, 7], "saint amour": [3, 7],
+  "moulin a vent": [8, 18], "morgon": [7, 15], "chenas": [6, 14], "julienas": [5, 12],
+  "fleurie": [5, 12], "cote de brouilly": [5, 10], "brouilly": [4, 8],
+  "regnie": [4, 8], "chiroubles": [4, 8], "saint amour": [4, 8],
   "beaujolais villages": [2, 5], "beaujolais nouveau": [0, 1],
   /* Vallée du Rhône */
-  "chateauneuf du pape": [5, 18], "cote rotie": [7, 20], "hermitage": [8, 22],
-  "cornas": [8, 20], "saint joseph": [4, 10], "crozes hermitage": [3, 8],
-  "condrieu": [3, 8], "cotes du rhone villages": [3, 8], "gigondas": [5, 14],
-  "vacqueyras": [4, 12], "rasteau": [4, 12], "cairanne": [4, 10],
+  "chateauneuf du pape": [8, 20], "cote rotie": [10, 25], "hermitage": [10, 25],
+  "cornas": [10, 25], "saint joseph": [6, 12], "crozes hermitage": [4, 10],
+  "condrieu": [4, 8], "gigondas": [6, 16], "vacqueyras": [5, 14],
+  "rasteau": [5, 14], "cairanne": [5, 12], "vinsobres": [5, 12], "lirac": [4, 10], "tavel": [2, 6],
+  "cotes du rhone villages": [4, 10],
   /* Loire */
-  "chinon": [4, 12], "bourgueil": [4, 12], "saint nicolas de bourgueil": [4, 12],
-  "saumur champigny": [4, 9], "sancerre": [2, 8], "sancerre rouge": [4, 10],
-  "quincy": [2, 5], "menetou salon": [2, 5], "reuilly": [2, 5],
-  "muscadet": [1, 4], "muscadet sur lie": [1, 5], "santenay": [3, 8],
-  "savoie": [1, 5], "roussette de savoie": [3, 8],
+  "saint nicolas de bourgueil": [5, 15], "bourgueil": [5, 15], "chinon": [5, 15],
+  "saumur champigny": [5, 10], "savennieres": [6, 20],
+  "bonnezeaux": [10, 30], "quarts de chaume": [10, 30], "coteaux du layon": [8, 25],
+  "vouvray": [3, 12],
+  "sancerre rouge": [5, 12], "sancerre": [3, 10],
+  "quincy": [2, 5], "menetou salon": [2, 6], "reuilly": [2, 5],
+  "muscadet sur lie": [1, 5], "muscadet": [1, 4],
+  "roussette de savoie": [4, 10], "savoie": [1, 5],
+  /* Alsace — la hiérarchie des Grands Crus est dans MENTIONS (régionalisée) */
   /* Sud-Ouest */
-  "cahors": [5, 15], "madiran": [8, 20], "jurancon": [5, 20], "gaillac": [2, 8],
-  "bergerac": [2, 8], "monbazillac": [8, 25], "irouleguy": [5, 15], "pacherenc": [5, 20],
+  "cahors": [6, 18], "madiran": [10, 25], "jurancon": [8, 25],
+  "gaillac": [2, 8], "bergerac": [2, 8], "monbazillac": [10, 30],
+  "irouleguy": [5, 15], "pacherenc": [8, 25], "marcillac": [2, 6],
+  "fronton": [3, 8], "pecharmant": [5, 12],
   /* Jura — oxydatifs de très longue garde */
-  "chateau chalon": [10, 40], "savagnin": [8, 30], "arbois": [3, 15],
+  "chateau chalon": [10, 50], "l etoile": [5, 20], "arbois": [3, 15],
+  "cotes du jura": [3, 15], "savagnin": [10, 35],
+  /* Provence */
+  "bandol": [8, 20], "cassis": [4, 8], "palette": [8, 20],
   /* Languedoc-Roussillon */
-  "fitou": [4, 12], "corbieres": [3, 10], "minervois": [3, 10], "saint chinian": [3, 10],
-  "collioure": [4, 12], "banyuls": [10, 40], "muscat de rivesaltes": [5, 25],
-  "maury": [10, 35], "roussillon villages": [4, 12],
+  "fitou": [5, 14], "corbieres": [4, 12], "minervois": [4, 12], "saint chinian": [4, 12],
+  "faugeres": [5, 14], "pic saint loup": [4, 12], "terrasses du larzac": [5, 15],
+  "collioure": [6, 15], "banyuls": [10, 50], "muscat de rivesaltes": [8, 25],
+  "maury": [10, 40], "roussillon villages": [5, 15],
+  /* Italie / Espagne / Portugal */
+  "barolo": [10, 30], "barbaresco": [8, 25], "brunello": [10, 30],
+  "chianti classico": [6, 18], "chianti": [4, 12],
+  "rioja": [6, 20], "ribera del duero": [6, 20],
+  "porto": [10, 40], "vintage port": [10, 40],
+  /* Tokaj */
+  "tokaj": [10, 40],
 };
 
 /* ---------- 2. Cépage × région (vins génériques sans appellation précise) ---------- */
 const PAR_CEPAGE_REGION = {
-  "riesling|alsace": [3, 10], "gewurztraminer|alsace": [3, 9], "pinot gris|alsace": [2, 7],
+  "riesling|alsace": [4, 15], "gewurztraminer|alsace": [3, 10], "pinot gris|alsace": [3, 8],
   "sylvaner|alsace": [1, 4], "muscat|alsace": [2, 6],
-  "chenin|vallee de la loire": [4, 12], "chenin|loire": [4, 12],
-  "nebbiolo|piemont": [7, 20], "gamay|beaujolais": [2, 5],
-  "merlot|bordeaux": [3, 8], "cabernet sauvignon|bordeaux": [6, 20],
-  "cabernet franc|vallee de la loire": [4, 12], "cabernet franc|loire": [4, 12],
-  "pinot noir|bourgogne": [4, 10], "pinot noir|alsace": [2, 7],
-  "syrah|rhone": [3, 10], "grenache|rhone": [3, 10],
-  "mourvedre|provence": [5, 14], "carignan|languedoc": [3, 10],
-  "chardonnay|bourgogne": [4, 10], "malbec|cahors": [5, 15],
-  "tannat|madiran": [8, 20], "riesling|moselle": [4, 12],
+  "chenin|vallee de la loire": [5, 20], "chenin|loire": [5, 20],
+  "nebbiolo|piemont": [8, 25], "nebbiolo|italie": [8, 25],
+  "gamay|beaujolais": [2, 5],
+  "merlot|bordeaux": [3, 8], "cabernet sauvignon|bordeaux": [8, 25],
+  "cabernet franc|vallee de la loire": [5, 15], "cabernet franc|loire": [5, 15],
+  "pinot noir|bourgogne": [5, 12], "pinot noir|alsace": [3, 8],
+  "syrah|rhone": [4, 12], "grenache|rhone": [4, 12],
+  "mourvedre|provence": [6, 16], "carignan|languedoc": [3, 10],
+  "chardonnay|bourgogne": [5, 12], "malbec|cahors": [6, 18], "tannat|madiran": [10, 25],
+  "riesling|moselle": [5, 20], "riesling|allemagne": [5, 20],
 };
 
 /* ---------- 3. Cépage seul ---------- */
 const PAR_CEPAGE = {
-  riesling: [3, 10], chenin: [4, 12], nebbiolo: [6, 18],
-  "cabernet sauvignon": [6, 20], "pinot noir": [3, 10], chardonnay: [3, 10],
-  gamay: [2, 6], merlot: [3, 8], syrah: [3, 10], malbec: [4, 12],
-  "cabernet franc": [3, 10], gewurztraminer: [2, 7], "pinot gris": [2, 6],
-  grenache: [4, 12], mourvedre: [6, 16], tannat: [8, 20], savagnin: [8, 30],
+  riesling: [4, 15], chenin: [5, 20], nebbiolo: [8, 25],
+  "cabernet sauvignon": [8, 25], "pinot noir": [4, 12], chardonnay: [4, 12],
+  gamay: [2, 6], merlot: [3, 8], syrah: [4, 12], malbec: [5, 15],
+  "cabernet franc": [4, 12], gewurztraminer: [2, 7], "pinot gris": [2, 6],
+  grenache: [5, 15], mourvedre: [8, 20], tannat: [10, 25], savagnin: [10, 35],
+  "tempranillo": [4, 15], sangiovese: [4, 12], viognier: [1, 4],
 };
 
 /* ---------- 4. Région × catégorie (vins sans cépage connu) ---------- */
 const PAR_REGION_CATEGORIE = {
   bordeaux: { rouge: [3, 10], blanc: [2, 6] },
-  bourgogne: { rouge: [4, 10], blanc: [3, 8] },
+  bourgogne: { rouge: [5, 12], blanc: [4, 10] },
   beaujolais: { rouge: [2, 5] },
   "vallee de la loire": { rouge: [3, 8], blanc: [3, 10] },
   alsace: { blanc: [2, 8] },
-  rhone: { rouge: [3, 10] },
-  "vallee du rhone": { rouge: [3, 10] },
-  languedoc: { rouge: [3, 8], blanc: [2, 5] },
+  rhone: { rouge: [4, 12] },
+  "vallee du rhone": { rouge: [4, 12] },
+  languedoc: { rouge: [4, 10], blanc: [2, 5] },
   provence: { rouge: [3, 8], rose: [1, 3] },
-  "sud ouest": { rouge: [3, 10], blanc: [2, 6] },
+  "sud ouest": { rouge: [4, 12], blanc: [2, 6] },
   champagne: { effervescent: [1, 4] },
   jura: { rouge: [3, 10], blanc: [4, 15] },
 };
@@ -114,17 +144,17 @@ const PAR_CATEGORIE = {
  * regions : liste de sous-chaînes (normalisées) où la règle s'applique ;
  * absente → partout. Le bonus s'ajoute à la fenêtre de base. */
 const MENTIONS = [
-  { mots: ["selection de grains nobles", " sgn", "grains nobles"], bonus: [8, 25] },
-  { mots: ["vendanges tardives", " vt", "late harvest"], bonus: [4, 15], hors: ["bordeaux"] },
-  { mots: ["vin de glace", "eiswein", "ice wine"], bonus: [6, 20] },
-  { mots: ["vin de paille"], bonus: [5, 15] },
+  { mots: ["selection de grains nobles", " sgn", "grains nobles"], bonus: [10, 30] },
+  { mots: ["vendanges tardives", " vt", "late harvest"], bonus: [5, 20], hors: ["bordeaux"] },
+  { mots: ["vin de glace", "eiswein", "ice wine"], bonus: [8, 25] },
+  { mots: ["vin de paille"], bonus: [6, 20] },
   { mots: ["liquoreux"], bonus: [5, 17] },
-  { mots: ["moelleux de garde", "bonnezeaux", "quarts de chaume", "coteaux du layon", "vouvray moelleux"], bonus: [5, 15] },
+  { mots: ["moelleux de garde", "bonnezeaux", "quarts de chaume", "coteaux du layon", "vouvray moelleux"], bonus: [6, 18] },
   /* Alsace : les Grands Crus sont des vins de tension, 15-30 ans pour le Riesling */
-  { mots: ["grand cru"], regions: ["alsace"], bonus: [4, 10] },
-  /* Bourgogne : GC 15+, 1er cru 10-15, village 7-10 (règle empirique) */
-  { mots: ["grand cru"], regions: ["bourgogne"], bonus: [6, 15] },
-  { mots: ["premier cru", "1er cru"], regions: ["bourgogne"], bonus: [3, 7] },
+  { mots: ["grand cru"], regions: ["alsace"], bonus: [5, 12] },
+  /* Bourgogne : GC 15-30, 1er cru 10-18, village 7-10 (règle empirique) */
+  { mots: ["grand cru"], regions: ["bourgogne"], bonus: [8, 18] },
+  { mots: ["premier cru", "1er cru"], regions: ["bourgogne"], bonus: [4, 8] },
   /* Général, hors régions déjà traitées */
   { mots: ["grand cru"], bonus: [2, 6] },
   { mots: ["premier cru"], bonus: [1, 4] },
@@ -136,13 +166,41 @@ const MENTIONS = [
 /* ---------- Champagne : millésimé / blanc de blancs / prestige ---------- */
 const CHAMPAGNE_MENTIONS = [
   { mots: ["blanc de blancs"], bonus: [2, 8] },
+  { mots: ["prestige", "grande cuvee", "cuvee prestige", "special cuvee"], bonus: [3, 10] },
   { mots: ["cru"], bonus: [1, 3] },
 ];
 
+/* ---------- Modificateur de format : le volume pilote la vitesse de vieillissement ----------
+ * Un magnum vieillit nettement plus lentement (moins d'oxygène relatif),
+ * une demi-bouteille beaucoup plus vite. */
+const FORMATS = [
+  { mots: ["magnum", "jeroboam", "mathusalem", "1,5 l", "1.5 l", "3 l", "4,5 l"], bonus: [2, 6], tag: "magnum" },
+  { mots: ["demi bouteille", "demi-bouteille", "37,5", "37.5", "35 cl"], bonus: [-1, -3], tag: "demi-bouteille" },
+];
+
+/* ---------- Grands millésimes & millésimes délicats (bonus/malus par région) ----------
+ * Repères des guides : à Bordeaux 1982, 1990, 2000, 2005, 2009, 2010, 2015, 2016,
+ * 2019, 2020 tiennent nettement plus longtemps ; 2013 se boit plus vite. */
+const MILLESIMES_FORTS = {
+  bordeaux: [1982, 1990, 2000, 2005, 2009, 2010, 2015, 2016, 2018, 2019, 2020],
+  bourgogne: [1990, 1999, 2002, 2005, 2009, 2010, 2015, 2019, 2020],
+  beaujolais: [2009, 2011, 2015, 2018, 2020, 2022],
+  rhone: [1990, 1998, 2003, 2007, 2010, 2015, 2016, 2019],
+  "vallee de la loire": [1989, 1990, 1996, 2002, 2005, 2009, 2014, 2015, 2019],
+  alsace: [1996, 2001, 2007, 2010, 2015, 2017, 2019],
+  champagne: [1982, 1990, 1996, 2002, 2005, 2008, 2012, 2015, 2018],
+  "sud ouest": [2005, 2009, 2010, 2015, 2016, 2019, 2020],
+  languedoc: [2016, 2019, 2020],
+  provence: [2017, 2019, 2022],
+};
+const MILLESIMES_DELICATS = {
+  bordeaux: [2013],
+};
+
 function norm(s) {
   return String(s || "").toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[’‘]/g, "'")
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[''']/g, "'")
     .replace(/[-_/]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -212,6 +270,31 @@ function bonusChampagne(texte) {
   return [bd, bf];
 }
 
+/* Modificateur de format (magnum, demi-bouteille…) */
+function bonusFormat(b) {
+  const t = norm([b.format, b.nom, b.cuvee].join(" "));
+  for (const f of FORMATS) {
+    if (f.mots.some(mot => t.includes(mot))) return { bonus: f.bonus, tag: f.tag };
+  }
+  return null;
+}
+
+/* Grand millésime / millésime délicat selon la région */
+function bonusMillesime(b) {
+  const mil = b.millesime;
+  if (mil == null || isNaN(mil)) return null;
+  const r = norm(b.region);
+  if (r) {
+    for (const reg of Object.keys(MILLESIMES_DELICATS)) {
+      if (r.includes(reg) && MILLESIMES_DELICATS[reg].includes(mil)) return { bonus: [-1, -2], tag: "millésime délicat" };
+    }
+    for (const reg of Object.keys(MILLESIMES_FORTS)) {
+      if (r.includes(reg) && MILLESIMES_FORTS[reg].includes(mil)) return { bonus: [2, 4], tag: "grand millésime" };
+    }
+  }
+  return null;
+}
+
 function estimeApogee(b) {
   if (!b || b.type === "Spiritueux" || b.categorie === "Spiritueux") return null;
 
@@ -224,7 +307,7 @@ function estimeApogee(b) {
     const [cbd, cbf] = bonusChampagne(texte);
     let base = catNorm === "champagne" ? [1, 5] : [1, 4];
     let regle = "Champagne";
-    if (b.millesime != null && !isNaN(b.millesime)) { base = [3, 15]; regle = "Champagne millésimé"; }
+    if (b.millesime != null && !isNaN(b.millesime)) { base = [5, 18]; regle = "Champagne millésimé"; }
     if (cbd > 0) regle += " + cuvée";
     const mil = b.millesime;
     if (mil == null || isNaN(mil)) return { debut: YEAR, fin: YEAR + 2, regle };
@@ -255,7 +338,19 @@ function estimeApogee(b) {
     return { debut: YEAR, fin: YEAR + 2, regle };
   }
 
-  return { debut: mil + base[0] + bd, fin: mil + base[1] + bf, regle };
+  /* ---------- Modificateurs : format puis millésime ---------- */
+  let dd = base[0] + bd, ff = base[1] + bf;
+  const fmt = bonusFormat(b);
+  if (fmt) { dd += fmt.bonus[0]; ff += fmt.bonus[1]; regle += " + " + fmt.tag; }
+  const mm = bonusMillesime(b);
+  if (mm) { dd += mm.bonus[0]; ff += mm.bonus[1]; regle += " + " + mm.tag; }
+
+  /* Garde-fous : jamais de départ avant le millésime, jamais fin < début */
+  let debut = mil + dd, fin = mil + ff;
+  if (debut < mil) debut = mil;
+  if (fin < debut) fin = debut;
+
+  return { debut, fin, regle };
 }
 
 export { estimeApogee };/* ESM */
