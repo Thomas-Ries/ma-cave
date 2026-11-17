@@ -163,12 +163,10 @@ const PREFS_TITLE = "Préférences soir";
 const PREFS_PROP = "Prefs soir (JSON)";
 const BUES_TITLE = "Bues (historique)";
 const BUES_PROP = "Bues (JSON)";
-const PUSH_TITLE = "Push (abonnements)";
-const PUSH_PROP = "Push (JSON)";
 
 function isMetaPage(p) {
   const t = ((p.properties?.Nom?.title) || []).map(x => x.plain_text || "").join("");
-  return t === AVATAR_TITLE || t === LISTES_TITLE || t === ENVIES_TITLE || t === PREFS_TITLE || t === BUES_TITLE || t === PUSH_TITLE;
+  return t === AVATAR_TITLE || t === LISTES_TITLE || t === ENVIES_TITLE || t === PREFS_TITLE || t === BUES_TITLE;
 }
 
 function toChunks(s, n = 1900) {
@@ -271,11 +269,11 @@ async function metaPost(request, env, title, propName, validate, profilForce) {
   }
 }
 
-/* ---------- PUSH en arrière-plan (v2.20) ----------
+/* ---------- PUSH en arrière-plan (v2.21 : stockage D1, table push_subs) ----------
  * Web Push standard implémenté à la main en WebCrypto (le _worker.js reste un
  * fichier unique sans npm) : chiffrement aes128gcm (RFC 8291) + VAPID ES256 (RFC 8292).
- * Les abonnements vivent dans la méta-page « Push (abonnements) » (base thomas,
- * partagée) ; l'app la rafraîchit à chaque synchro BDD (action "digest").
+ * Les abonnements vivent dans la table D1 « push_subs » (même base que les
+ * bouteilles) ; l'app l'actualise à chaque synchro BDD (action "digest").
  * Le cron Cloudflare (cron/ma-cave-push-cron.js) appelle POST /api/push-cron
  * chaque soir avec le secret PUSH_CRON_SECRET. */
 function b64url(s) { return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); }
@@ -297,6 +295,7 @@ async function hkdf(ikm, salt, info, len) {
   const k = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
   return new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, k, len * 8));
 }
+
 
 
 
@@ -337,55 +336,53 @@ async function webpush(env, sub, payload) {
   } });
 }
 
-function pushValides(s) {
-  try { const j = JSON.parse(s); return !!j && Array.isArray(j.subs); } catch { return false; }
+/* ---------- Stockage D1 : table push_subs (v2.21, remplaçe la méta-page Notion) ----------
+ * Même base D1 que les bouteilles : rapide, pas de limite de débit, écritures
+ * directes (plus de read-modify-write d'un gros JSON). */
+async function pushTable(env) {
+  if (!env.DB) throw new Error("Binding D1 absent : Settings > Functions > D1 database bindings > DB");
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, p256dh TEXT NOT NULL, auth TEXT NOT NULL, profil TEXT, digest TEXT, maj TEXT, envoye TEXT, cle TEXT)").run();
 }
+/* Toutes les lignes, digest parsé en objet */
 async function pushLecture(env) {
-  const r = await metaGet(env, "thomas", PUSH_TITLE, PUSH_PROP);
-  if (!r?.ok || !r.data) return [];
-  try { const j = JSON.parse(r.data); return Array.isArray(j.subs) ? j.subs : []; } catch { return []; }
+  await pushTable(env);
+  const { results } = await env.DB.prepare("SELECT * FROM push_subs ORDER BY maj").all();
+  return (results || []).map(r => {
+    let d = null;
+    try { d = r.digest ? JSON.parse(r.digest) : null; } catch {}
+    return { endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth, profil: r.profil, digest: d, maj: r.maj, envoye: r.envoye, cle: r.cle };
+  });
 }
-async function pushEcriture(env, subs) {
-  /* réutilise metaPost via une fausse requête interne (chunks, retry 429, cache d'id) ;
-     renvoie { status, j } pour que l'APPELANT voie les échecs Notion (silencieux avant v2.20.3) */
-  const fake = new Request("https://interne/push", { method: "POST", body: JSON.stringify({ profil: "thomas", data: JSON.stringify({ subs }) }) });
-  const res = await metaPost(fake, env, PUSH_TITLE, PUSH_PROP, pushValides, "thomas");
-  let j = null;
-  try { j = await res.json(); } catch {}
-  return { status: res.status, j, texte: j && !j.ok ? (j.error || "statut " + res.status) : null };
+async function pushNombre(env) {
+  await pushTable(env);
+  const r = await env.DB.prepare("SELECT COUNT(*) AS n FROM push_subs").first();
+  return r ? r.n : 0;
 }
 
 /* POST /api/push-sub : abonner, rafraîchir le résumé, ou désabonner (jeton requis) */
 async function pushSubPost(request, env) {
   let body = {};
   try { body = await request.json(); } catch {}
-  const subs = await pushLecture(env);
+  await pushTable(env);
   if (body.action === "sub") {
     const s = body.sub || {};
     if (!s.endpoint || !s.keys || !s.keys.p256dh || !s.keys.auth) return json({ ok: false, error: "Abonnement invalide" }, 400);
-    const ent = {
-      endpoint: s.endpoint, p256dh: s.keys.p256dh, auth: s.keys.auth,
-      profil: body.profil || "thomas", digest: body.digest || null, maj: new Date().toISOString(),
-    };
-    const i = subs.findIndex(x => x.endpoint === s.endpoint);
-    if (i >= 0) { ent.envoye = subs[i].envoye; ent.cle = subs[i].cle; subs[i] = ent; }
-    else { subs.push(ent); if (subs.length > 20) subs.shift(); /* 20 appareils max, les plus vieux tombent */ }
-    const w = await pushEcriture(env, subs);
-    if (!w.j || !w.j.ok) return json({ ok: false, error: "Enregistrement Notion échoué : " + (w.texte || "inconnu") }, 502);
-    return json({ ok: true, n: subs.length });
+    /* on préserve envoye/cle si l'appareil est déjà connu (anti-spam du cron) */
+    const ex = await env.DB.prepare("SELECT envoye, cle FROM push_subs WHERE endpoint = ?").bind(s.endpoint).first().catch(() => null);
+    await env.DB.prepare("INSERT OR REPLACE INTO push_subs (endpoint, p256dh, auth, profil, digest, maj, envoye, cle) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(s.endpoint, s.keys.p256dh, s.keys.auth, body.profil || "thomas", JSON.stringify(body.digest || null), new Date().toISOString(), ex ? ex.envoye : null, ex ? ex.cle : null)
+      .run();
+    return json({ ok: true, n: await pushNombre(env) });
   }
   if (body.action === "digest") {
-    const i = subs.findIndex(x => x.endpoint === body.endpoint);
-    if (i < 0) return json({ ok: false, error: "Abonnement inconnu" }, 404);
-    subs[i].digest = body.digest || null;
-    subs[i].maj = new Date().toISOString();
-    await pushEcriture(env, subs);
+    const r = await env.DB.prepare("UPDATE push_subs SET digest = ?, maj = ? WHERE endpoint = ?")
+      .bind(JSON.stringify(body.digest || null), new Date().toISOString(), body.endpoint).run();
+    if (!r.meta || !r.meta.changes) return json({ ok: false, error: "Abonnement inconnu" }, 404);
     return json({ ok: true });
   }
   if (body.action === "off") {
-    const reste = subs.filter(x => x.endpoint !== body.endpoint);
-    await pushEcriture(env, reste);
-    return json({ ok: true, n: reste.length });
+    await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(body.endpoint).run();
+    return json({ ok: true, n: await pushNombre(env) });
   }
   return json({ ok: false, error: "Action inconnue" }, 400);
 }
@@ -394,8 +391,7 @@ async function pushSubPost(request, env) {
    Anti-spam : au plus un push par appareil tous les 6 jours, sauf si le résumé change. */
 async function pushCron(env) {
   const subs = await pushLecture(env);
-  let envoyees = 0, mortes = 0, erreurs = 0, modifie = false;
-  const reste = [];
+  let envoyees = 0, mortes = 0, erreurs = 0;
   for (const s of subs) {
     const d = s.digest || {};
     const boire = d.boire || 0, passe = d.passe || 0;
@@ -407,15 +403,16 @@ async function pushCron(env) {
       const noms = (d.top || []).slice(0, 3).join(", ");
       try {
         const res = await webpush(env, s, { titre: "Ma Cave — apogées", corps: corps + (noms ? " — " + noms : ""), tag: "ma-cave-push" });
-        if (res.ok || res.status === 201) { envoyees++; s.envoye = new Date().toISOString(); s.cle = cle; modifie = true; }
-        else if (res.status === 404 || res.status === 410) { mortes++; modifie = true; continue; } /* appareil désabonné → nettoyé */
+        if (res.ok || res.status === 201) {
+          envoyees++;
+          await env.DB.prepare("UPDATE push_subs SET envoye = ?, cle = ? WHERE endpoint = ?").bind(new Date().toISOString(), cle, s.endpoint).run();
+        }
+        else if (res.status === 404 || res.status === 410) { mortes++; await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run(); }
         else erreurs++;
       } catch { erreurs++; }
     }
-    reste.push(s);
   }
-  if (modifie) await pushEcriture(env, reste);
-  return json({ ok: true, envoyees, mortes, erreurs, total: reste.length });
+  return json({ ok: true, envoyees, mortes, erreurs, total: await pushNombre(env) });
 }
 
 /* ---------- Listes d'envie (v2.5) ----------
@@ -602,6 +599,7 @@ const PUB_CSS = `
 
   .badge-note small { font-size:8.5px; letter-spacing:.22em; text-transform:uppercase; }
   .badge-note b { font-size:26px; font-weight:normal; line-height:1.05; }
+
   .ligne { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--hairline); text-align:left; }
   .ligne:last-of-type { border-bottom:0; }
   .ligne .t b { font-weight:normal; font-family:-apple-system,system-ui,sans-serif; font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); display:block; margin-bottom:2px; }
@@ -900,6 +898,7 @@ export default {
       if (request.method === "POST") return metaPost(request, env, ENVIES_TITLE, ENVIES_PROP, listesValides, "thomas");
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
     }
+
 
 
     /* --- Push en arrière-plan : abonnements (jeton d'appairage) + cron (secret) --- */
