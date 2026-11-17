@@ -91,6 +91,21 @@ const d1tok = ref(cave.d1Token());
 const d1Busy = ref(false);
 const d1Etat = ref(null);
 const d1Verif = ref("");
+/* Pastille d'import : ce que la BDD a livré sur cet appareil (vins + spiritueux) */
+const d1Import = computed(() => {
+  const b = cave.db.bouteilles || [];
+  return { vins: b.filter(x => x.type !== "Spiritueux").length, spirits: b.filter(x => x.type === "Spiritueux").length };
+});
+const d1SyncTs = computed(() => cave.d1PullTs || cave.d1Read("-d1push", 0));
+function ilYA(ts) {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (!ts) return "jamais";
+  if (m < 1) return "à l'instant";
+  if (m < 60) return "il y a " + m + " min";
+  const h = Math.round(m / 60);
+  if (h < 24) return "il y a " + h + " h";
+  return "il y a " + Math.round(h / 24) + " j";
+}
 async function lierBdd() {
   d1Busy.value = true; d1Etat.value = null;
   cave.setD1Token(d1tok.value);
@@ -98,9 +113,15 @@ async function lierBdd() {
   d1Verif.value = "Test de la connexion…";
   const st = await cave.d1Pull(true);
   d1Etat.value = st;
-  d1Verif.value = st === "ok" ? "Connexion réussie : la BDD répond. Tu peux envoyer tes données."
-    : st === "refuse" ? "Connexion refusée : le jeton ne correspond pas à MA_CAVE_TOKEN (ou la variable n'est pas encore déployée côté Cloudflare)."
-    : "BDD injoignable (statut : " + st + "). Ouvre la console du navigateur (F12) : le détail de l'erreur y est affiché sous [BDD].";
+  if (st === "ok") {
+    const imp = d1Import.value;
+    d1Verif.value = (imp.vins || imp.spirits)
+      ? "Connexion réussie : " + imp.vins + " vin" + (imp.vins > 1 ? "s" : "") + (imp.spirits ? " et " + imp.spirits + " spiritueux" : "") + " importés depuis la BDD."
+      : "Connexion réussie : la BDD répond mais est vide — envoie tes données depuis l'appareil principal.";
+  } else {
+    d1Verif.value = st === "refuse" ? "Connexion refusée : le jeton ne correspond pas à MA_CAVE_TOKEN (ou la variable n'est pas encore déployée côté Cloudflare)."
+      : "BDD injoignable (statut : " + st + "). Ouvre la console du navigateur (F12) : le détail de l'erreur y est affiché sous [BDD].";
+  }
   d1Busy.value = false;
 }
 
@@ -326,10 +347,19 @@ function confirmDisable() {
           <button @click="lierBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Lier cet appareil</button>
         </div>
         <p v-if="d1Verif" class="text-[12px] mt-2 font-medium" :class="d1Etat === 'ok' ? 'text-accent' : d1Etat === 'vide' ? 'text-muted' : 'text-red'">{{ d1Verif }}</p>
+        <!-- Pastille d'import : confirme que la cave est bien arrivée depuis la BDD -->
+        <div v-if="d1tok && d1SyncTs" class="mt-3 flex items-center gap-2 px-3 py-2 rounded-full bg-green/10 border border-green/30">
+          <Ic name="check" cls="w-4 h-4 text-green shrink-0" />
+          <span class="flex-1 min-w-0">
+            <span v-if="d1Import.vins || d1Import.spirits" class="block text-xs font-medium text-green truncate">{{ d1Import.vins }} vin{{ d1Import.vins > 1 ? 's' : '' }}<template v-if="d1Import.spirits"> et {{ d1Import.spirits }} spiritueux</template> importés depuis la BDD</span>
+            <span v-else class="block text-xs font-medium text-muted">BDD liée — aucune bouteille synchronisée pour l'instant</span>
+            <span class="block text-[10px] text-muted">Dernière synchro {{ ilYA(d1SyncTs) }}</span>
+          </span>
+        </div>
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.14.1</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.15.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
