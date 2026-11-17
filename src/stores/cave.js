@@ -331,8 +331,18 @@ export const useCave = defineStore("cave", {
     },
 
     /* ---------- L'actu du vin (RSS via le worker, cache local 6 h) ---------- */
+    /* Entités HTML résiduelles (&#039; &amp;…) : dernier filet de sécurité côté app,
+       le worker décode déjà mais les caches intermédiaires peuvent servir l'ancien flux. */
+    decodeActuTxt(t) {
+      if (!t) return t;
+      return t.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+        .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&rsquo;/g, "'")
+        .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+    },
     async fetchActu(force) {
-      const CLE = this.pKeys.db + "-actu";
+      const CLE = this.pKeys.db + "-actu-v2"; /* v2 : purge le cache v1 qui pouvait contenir des titres non décodés */
       try {
         const cache = JSON.parse(localStorage.getItem(CLE) || "null");
         if (!force && cache && Date.now() - cache.ts < 6 * 3600 * 1000) { this.actu = cache.data; return; }
@@ -342,6 +352,7 @@ export const useCave = defineStore("cave", {
         if (!r.ok) throw new Error("actu " + r.status);
         const data = await r.json();
         if (!data || !data.titre) throw new Error("actu vide");
+        data.titre = this.decodeActuTxt(data.titre);
         this.actu = data; this.actuErreur = false;
         try { localStorage.setItem(CLE, JSON.stringify({ ts: Date.now(), data })); } catch {}
       } catch { this.actuErreur = true; }

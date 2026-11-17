@@ -24,6 +24,14 @@ const onAvatar = inject("onAvatar");
 
 const profilMenu = ref(false);
 const showProfil = ref(false);
+/* Préférences du soir (bandeau apogée) : même source que Ce soir, rafraîchie
+   quand les préférences changent (soirVersion). Le bandeau les référence —
+   sans cette définition, le rendu de la vue plantait dès qu'une bouteille
+   était en apogée (prefsSoir undefined → TypeError, vue figée). */
+const prefsSoir = computed(() => {
+  void cave.soirVersion;
+  return cave.soirPrefs();
+});
 /* Cloche : notifications d'apogée (déménagée de l'ex-onglet Apogées) */
 async function toggleCloche() {
   if (!cave.apoAlerte && typeof Notification !== "undefined" && Notification.permission === "default") {
