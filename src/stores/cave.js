@@ -1023,6 +1023,26 @@ export const useCave = defineStore("cave", {
             if (!local.apoDebut && !local.apoFin && !local.apoAuto) { const est = estimeApogee(local); if (est) { local.apoAuto = est; local.apoRegle = est.regle; } }
           }
         }
+        /* Garde-fou CRITIQUE : la BDD répond VIDE alors que cet appareil connaît
+           des bouteilles déjà synchronisées (-d1ids). Soit la base a été vidée,
+           soit le profil est mauvais — dans tous les cas on ne supprime RIEN
+           localement (le pull normal effacerait toute la cave !) et on propose
+           de tout renvoyer. */
+        if (!distants.size && this.db.bouteilles.length && ids.length) {
+          console.warn("[BDD] la base répond vide alors que", ids.length, "bouteilles synchronisées sont connues — aucune suppression locale");
+          this.d1Write("-d1ids", ids);
+          this.save();
+          this.askConfirm(
+            "La BDD est vide — tout renvoyer ?",
+            "Tout renvoyer",
+            () => {
+              this.toast("Renvoi de toute la cave vers la BDD…");
+              this.d1Push(true).then(ok => this.toast(ok ? "Cave renvoyée — les autres appareils vont la récupérer" : "Échec du renvoi — détail dans la console [BDD]"));
+            }
+          );
+          this.d1Photos();
+          return "ok";
+        }
         /* Supprimées à distance : seulement celles déjà connues de la BDD */
         for (const b of [...this.db.bouteilles]) {
           if (ids.has(b.id) && !distants.has(b.id)) { this.db.bouteilles.splice(this.db.bouteilles.indexOf(b), 1); deleted++; }
