@@ -97,6 +97,17 @@ const d1Import = computed(() => {
   return { vins: b.filter(x => x.type !== "Spiritueux").length, spirits: b.filter(x => x.type === "Spiritueux").length };
 });
 const d1SyncTs = computed(() => cave.d1PullTs || cave.d1Read("-d1push", 0));
+/* Journal BDD : les 3 derniers événements notables */
+const JOURNAL_LABELS = {
+  suppressions: n => n + " bouteilles supprimées → propagées à la BDD",
+  "suppressions-proposees": n => n + " suppressions en attente de confirmation",
+  "renvoi-complet": n => "cave entière renvoyée (" + n + " bouteilles)",
+  "garde-vide": n => "BDD vide détectée — " + n + " bouteilles protégées",
+};
+const journalBdd = computed(() => {
+  const log = cave.d1Log.length ? cave.d1Log : cave.d1Read("-d1journal", []);
+  return log.slice(0, 3).map(e => (JOURNAL_LABELS[e.type] || (() => e.type))(e.n) + " · " + ilYA(e.ts));
+});
 function ilYA(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
   if (!ts) return "jamais";
@@ -380,10 +391,15 @@ function confirmDisable() {
             <span class="block text-[10px] text-muted">Dernière synchro {{ ilYA(d1SyncTs) }}</span>
           </span>
         </div>
+        <!-- Décompte BDD + journal des événements -->
+        <p class="text-[10px] text-muted mt-2">BDD : <span class="font-medium text-ink">{{ cave.d1Nb ?? "—" }}</span> bouteille{{ (cave.d1Nb ?? 0) > 1 ? 's' : '' }}<template v-if="d1SyncTs"> · synchro {{ ilYA(d1SyncTs) }}</template></p>
+        <div v-if="journalBdd.length" class="mt-1.5">
+          <p v-for="(l, i) in journalBdd" :key="i" class="text-[10px] text-muted/80 truncate">· {{ l }}</p>
+        </div>
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.18.1</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.19.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
