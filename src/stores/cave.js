@@ -299,6 +299,7 @@ export const useCave = defineStore("cave", {
         this._scrollY = window.scrollY || 0;
         body.classList.add("no-scroll");
 
+
         body.style.top = (-this._scrollY) + "px";
       } else if (!locked && body.classList.contains("no-scroll")) {
         body.classList.remove("no-scroll");
@@ -598,6 +599,7 @@ export const useCave = defineStore("cave", {
 
     /* Traduction des échecs de synchro en phrase humaine (pas de jargon dev) */
     raisonSync(res, j) {
+
       if (typeof navigator !== "undefined" && !navigator.onLine) return "tu es hors ligne — rien n’a pu partir";
 
       const s = res ? res.status : 0;
@@ -898,6 +900,7 @@ export const useCave = defineStore("cave", {
     /* ---------- Import ---------- */
     async parseImport(file) { return parseImportFile(file); },
     previewImport(rows) { return previewImport(rows, this.db); },
+
     applyImportRows(rows) { return applyImportRows(rows, this.db, uid, estimeApogee); },
 
 
@@ -1198,6 +1201,7 @@ export const useCave = defineStore("cave", {
       try {
         const light = JSON.parse(this.backupJSON());
         light.bouteilles = light.bouteilles.map(b => ({ ...b, photo: null }));
+
         light.envies = (light.envies || []).map(e => ({ ...e, items: (e.items || []).map(i => ({ ...i, photos: [] })) }));
         const key = this.pKeys.db + "-snaps";
         let snaps = [];
@@ -1278,11 +1282,26 @@ export const useCave = defineStore("cave", {
       }
       return { boire: st.boire, passe: st.passe, bientot: st.bientot, top };
     },
-    async pushInit() { this.pushNotifEtat = await pushEtat(); },
+    async pushInit() {
+      let etat = await pushEtat();
+      /* iOS purge parfois l'abonnement push à la fermeture de la PWA : si cet
+         appareil avait activé les rappels (drapeau local) et que la permission
+         tient toujours, on se ré-abonne SILENCIEUSEMENT — le toggle reste sur Activé. */
+      if (etat !== "on" && this.d1Read("-pushon", false) && etat === "pret") {
+        try {
+          await pushActiver(this.d1Token(), this.PROFIL, this.pushDigest());
+          etat = "on";
+        } catch { this.d1Write("-pushon", false); etat = await pushEtat(); }
+      }
+      if (etat !== "on") this.d1Write("-pushon", false);
+      this.pushNotifEtat = etat;
+      return etat;
+    },
     async pushOn() {
       try {
         await pushActiver(this.d1Token(), this.PROFIL, this.pushDigest());
         this.pushNotifEtat = "on";
+        this.d1Write("-pushon", true);
         this.toast("Rappels activés — tu seras prévenu même app fermée");
         return true;
       } catch (e) {
@@ -1294,6 +1313,7 @@ export const useCave = defineStore("cave", {
     async pushOff() {
       try { await pushDesactiver(this.d1Token()); } catch {}
       this.pushNotifEtat = await pushEtat();
+      this.d1Write("-pushon", false);
       this.toast("Rappels en arrière-plan désactivés");
     },
     /* Après chaque synchro BDD : rafraîchit le résumé du cron, silencieux */
