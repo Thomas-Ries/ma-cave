@@ -554,10 +554,11 @@ let D1_READY = false;
 async function d1(env) {
   if (!env.DB) throw new Error("Binding D1 absent : Settings > Functions > D1 database bindings > DB");
   if (!D1_READY) {
-    /* PIÈGE D1 : exec() découpe par LIGNE — les requêtes doivent tenir sur une seule ligne chacune */
+    /* PIÈGES D1 : (1) exec() découpe par LIGNE — requêtes sur une seule ligne ;
+       (2) batch() n'accepte pas d'objets {sql} bruts sans params → prepare() obligatoire. */
     await env.DB.batch([
-      { sql: "CREATE TABLE IF NOT EXISTS bouteilles (id TEXT PRIMARY KEY, profil TEXT NOT NULL, maj_le TEXT, data TEXT NOT NULL)" },
-      { sql: "CREATE TABLE IF NOT EXISTS docs (k TEXT NOT NULL, profil TEXT NOT NULL, maj_le TEXT, data TEXT NOT NULL, PRIMARY KEY (k, profil))" }
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS bouteilles (id TEXT PRIMARY KEY, profil TEXT NOT NULL, maj_le TEXT, data TEXT NOT NULL)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS docs (k TEXT NOT NULL, profil TEXT NOT NULL, maj_le TEXT, data TEXT NOT NULL, PRIMARY KEY (k, profil))")
     ]);
     D1_READY = true;
   }

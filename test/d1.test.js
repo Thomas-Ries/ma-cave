@@ -10,8 +10,8 @@ function mockDB() {
   const d = new DatabaseSync(":memory:");
   return {
     exec: sql => d.exec(sql),
-    prepare: sql => { const st = d.prepare(sql); return { bind: (...p) => ({ all: () => ({ results: st.all(...p) }), run: () => st.run(...p) }) }; },
-    batch: async stmts => { for (const s of stmts) d.prepare(s.sql).run(...(s.params || [])); }
+    prepare: sql => { const st = d.prepare(sql); return { sql, bind: (...p) => ({ all: () => ({ results: st.all(...p) }), run: () => st.run(...p) }) }; },
+    batch: async stmts => { for (const s of stmts) { if (s && s.sql != null && !s.bind) d.prepare(s.sql).run(...(s.params || [])); else if (s && s.sql != null) d.prepare(s.sql).run(...(s.params || [])); } }
   };
 }
 function mockKV() {
