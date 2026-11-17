@@ -1,0 +1,48 @@
+--- ma-cave-main/src/stores/cave.js	2026-11-17 16:44:32.000000000 +0000
++++ mc-push/src/stores/cave.js	2026-11-17 17:14:01.310365554 +0000
+@@ -725,16 +725,23 @@
+          BDD (et donc les caves des autres appareils) par accident. */
+       const dels = ids.filter(id => !vus.includes(id));
+       let delsSautes = false;
+-      if (dels.length > 5 && !this._d1DelForce && Date.now() > (this._d1DelAsk || 0)) {
+-        this._d1DelAsk = Date.now() + 3600e3;
+-        this.d1Journal("suppressions-proposees", dels.length);
+-        console.warn("[BDD]", dels.length, "suppressions en attente — confirmation demandée");
+-        this.askConfirm(
+-          "Supprimer " + dels.length + " bouteilles de la BDD ?",
+-          "Supprimer",
+-          () => { this._d1DelForce = true; this.d1Journal("suppressions", dels.length); this.d1Push().catch(() => {}); }
+-        );
++      if (dels.length > 5 && !this._d1DelForce) {
++        /* BUG DU 17/11/2026 (vidage silencieux de la BDD) : pendant le cooldown d'une
++           heure d'une demande déjà faite, les suppressions partaient QUAND MÊME en
++           silence. Désormais, au-delà de 5 suppressions SANS confirmation explicite,
++           on ne pousse JAMAIS les « b- », qu'un dialogue soit en attente ou en cooldown. */
+         delsSautes = true;
++        if (Date.now() > (this._d1DelAsk || 0)) {
++          this._d1DelAsk = Date.now() + 3600e3;
++          this.d1Journal("suppressions-proposees", dels.length);
++          this.askConfirm(
++            "Supprimer " + dels.length + " bouteilles de la BDD ?",
++            "Supprimer",
++            () => { this._d1DelForce = true; this.d1Journal("suppressions", dels.length); this.d1Push().catch(() => {}); }
++          );
++        } else {
++          console.warn("[BDD]", dels.length, "suppressions en attente — confirmation déjà demandée, rien n'est envoyé");
++        }
+       }
+       if (!delsSautes) for (const id of dels) actions.push({ t: "b-", id });
+       const empreintes = this.d1Read("-d1doc", {});
+@@ -748,7 +755,11 @@
+       if (!actions.length) return true;
+       this.syncBusy(true);
+       try {
+-        const res = await this.d1Fetch("/api/db/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, actions }) });
++        /* x-del-force : preuve de la confirmation explicite « Supprimer N bouteilles ».
++           Le worker REFUSE tout push de plus de 5 « b- » sans cet en-tête (garde-fou serveur). */
++        const headers = { "Content-Type": "application/json" };
++        if (this._d1DelForce) headers["x-del-force"] = "1";
++        const res = await this.d1Fetch("/api/db/push", { method: "POST", headers, body: JSON.stringify({ profil: this.PROFIL, actions }) });
+         const j = await res.json();
+         if (!j.ok) { console.error("[BDD] push refusé :", res.status, j.error); return false; }
+         this.d1Write("-d1push", Date.now());
