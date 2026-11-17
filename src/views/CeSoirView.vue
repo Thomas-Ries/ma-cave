@@ -104,6 +104,9 @@ function frigoSoir() {
   cave.rappelFrigo(b);
 }
 
+/* Couleur de la vedette : la charte prend la teinte de la catégorie du vin
+   (bordeaux = rouge, or = blanc, rosé, champagne, crémant, moelleux, spiritueux…) */
+const vedetteCol = computed(() => CAT_COLORS[vedette.value?.b?.categorie] || "#D9C589");
 /* ===== Jauge d'apogée de la vedette ===== */
 const apoJ = computed(() => {
   const b = vedette.value?.b;
@@ -222,11 +225,11 @@ function versEnvies() { router.push("/envies"); }
     </button>
 
     <!-- Carte vedette : suggestion du soir ou proposition plaisir -->
-    <div v-if="vedette" class="mt-3 rounded-xl2 border border-riesling bg-white overflow-hidden card-sh">
+    <div v-if="vedette" class="mt-3 rounded-xl2 border bg-white overflow-hidden card-sh" :style="{ borderColor: vedetteCol }">
       <div class="flex items-stretch">
-        <div class="w-[3px] self-stretch shrink-0 bg-riesling"></div>
+        <div class="w-[3px] self-stretch shrink-0" :style="{ background: vedetteCol }"></div>
         <!-- Colonne visuelle : vraie photo si elle existe, silhouette sinon -->
-        <button @click="cave.openFiche(vedette.b.id)" class="w-[72px] shrink-0 bg-gradient-to-b from-riesling/20 via-gold/10 to-cream flex items-center justify-center overflow-hidden" title="Ouvrir la fiche">
+        <button @click="cave.openFiche(vedette.b.id)" class="w-[72px] shrink-0 flex items-center justify-center overflow-hidden" :style="{ background: 'linear-gradient(to bottom, ' + vedetteCol + '33, #A8842C1A, #FAF6F1)' }" title="Ouvrir la fiche">
           <img v-if="vedette.b.photo" :src="vedette.b.photo" alt="" class="w-full h-full object-cover" />
           <svg v-else viewBox="0 0 44 84" class="h-[72px] w-[38px] text-riesling-ink/60" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
             <path d="M19 5h6v13c0 3 8 5 8 12v44a6 6 0 0 1-6 6H17a6 6 0 0 1-6-6V30c0-7 8-9 8-12V5z" />
@@ -235,7 +238,7 @@ function versEnvies() { router.push("/envies"); }
         </button>
         <div class="flex-1 min-w-0 py-3 pl-3.5 pr-3">
           <div class="flex items-center justify-between gap-2">
-            <p class="text-[10px] text-riesling-ink uppercase tracking-widest min-w-0 truncate">{{ vedette.urgent ? 'La bouteille du soir' : "Rien d'urgent — et si on ouvrait ça ?" }}</p>
+            <p class="text-[10px] uppercase tracking-widest min-w-0 truncate" :style="{ color: vedetteCol }">{{ vedette.urgent ? 'La bouteille du soir' : "Rien d'urgent — et si on ouvrait ça ?" }}</p>
             <button @click="fermerVedette" class="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-muted hover:text-ink" title="Masquer jusqu'à demain"><Ic name="x" cls="w-3.5 h-3.5" /></button>
           </div>
           <button @click="cave.openFiche(vedette.b.id)" class="text-left mt-0.5 max-w-full">
