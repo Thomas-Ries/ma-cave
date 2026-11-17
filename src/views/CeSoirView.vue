@@ -131,13 +131,11 @@ const apoJ = computed(() => {
 const frigoB = computed(() => cave.db.bouteilles.filter(b => b.quantite > 0 && b.cave === "Frigo"));
 const nbFrigo = computed(() => frigoB.value.length);
 
-/* ===== Rappel actif : UN seul, le plus urgent (frigo déplacé en warning) ===== */
+/* ===== Rappel actif : uniquement les mises de côté (les apogées ont leur tuile) ===== */
 const showListes = ref(false);
 const rappel = computed(() => {
   const l = cave.listes.find(x => x.date && (x.ids || []).length && joursAvant(x.date) >= 0 && joursAvant(x.date) <= 2);
   if (l) return { t: "Soirée « " + l.nom + " »", s: fmtListeDate(l.date) + " · " + l.ids.length + " bouteille" + (l.ids.length > 1 ? "s" : "") + " de côté", action: "listes" };
-  const st = cave.apogeeStats;
-  if (st.passe > 0) return { t: st.passe + " apogée" + (st.passe > 1 ? "s" : "") + " passée" + (st.passe > 1 ? "s" : ""), s: "À boire sans attendre", action: "passe" };
   return null;
 });
 function rappelGo() {
@@ -153,7 +151,7 @@ function rappelGo() {
 function versCaveApo(v) { cave.db.filters.apogee = v; cave.cavePage = 1; router.push("/cave"); }
 function versCaveFrigo() { cave.db.filters.cave = "Frigo"; cave.cavePage = 1; router.push("/cave"); }
 
-/* ===== Mini-stats : une ligne, tap → /stats ===== */
+/* ===== Mini-stats : quelques chiffres sur la homepage, tap → /stats ===== */
 const stCave = computed(() => cave.stats);
 const miniStats = computed(() => {
   const st = stCave.value;
@@ -164,6 +162,8 @@ const miniStats = computed(() => {
     regions,
     mill: ms.length ? { min: Math.min(...ms), max: Math.max(...ms) } : null,
     valeur: st.valeur > 0 ? Math.round(st.valeur) : null,
+    bues: st.buesCount || null,
+    note: st.avgNote || null,
   };
 });
 
@@ -270,13 +270,19 @@ function versEnvies() { router.push("/envies"); }
       </button>
     </div>
 
-    <!-- Mini-stats : une ligne discrète, tap → page Stats -->
-    <button v-if="miniStats.totalB" @click="router.push('/stats')" class="mt-2 w-full flex items-center gap-2.5 px-3.5 py-2 rounded-xl2 bg-white/70 border border-hairline text-left card-sh">
-      <Ic name="chart" cls="w-3.5 h-3.5 text-muted shrink-0" />
-      <span class="flex-1 min-w-0 text-[11px] text-muted truncate">
-        Ta cave · <span class="font-medium text-ink">{{ miniStats.totalB }} bouteilles</span><template v-if="miniStats.regions"> · {{ miniStats.regions }} région{{ miniStats.regions > 1 ? 's' : '' }}</template><template v-if="miniStats.mill"> · millésimes {{ miniStats.mill.min }}–{{ miniStats.mill.max }}</template><template v-if="miniStats.valeur"> · ~{{ miniStats.valeur.toLocaleString('fr-FR') }} €</template>
-      </span>
-      <Ic name="chevR" cls="w-3.5 h-3.5 text-muted shrink-0" />
+    <!-- Stats : quelques chiffres directement ici, tap → page Stats complète -->
+    <button v-if="miniStats.totalB" @click="router.push('/stats')" class="mt-3 w-full rounded-xl2 bg-white border border-hairline px-3.5 py-3 text-left card-sh">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-[10px] text-muted uppercase tracking-widest">Ta cave en chiffres</p>
+        <span class="flex items-center gap-1 text-[10px] text-accent">Tout voir <Ic name="chevR" cls="w-3 h-3" /></span>
+      </div>
+      <div class="flex flex-wrap gap-x-5 gap-y-2 mt-2">
+        <span class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.totalB }}</span><span class="text-[10px] text-muted">bouteilles</span></span>
+        <span v-if="miniStats.regions" class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.regions }}</span><span class="text-[10px] text-muted">régions</span></span>
+        <span v-if="miniStats.mill" class="flex items-baseline gap-1.5"><span class="font-serif text-base leading-none">{{ miniStats.mill.min }}–{{ miniStats.mill.max }}</span><span class="text-[10px] text-muted">millésimes</span></span>
+        <span v-if="miniStats.valeur" class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.valeur.toLocaleString('fr-FR') }} €</span><span class="text-[10px] text-muted">de cave</span></span>
+        <span v-if="miniStats.bues" class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.bues }}</span><span class="text-[10px] text-muted">bues<template v-if="miniStats.note"> · {{ miniStats.note }}/5</template></span></span>
+      </div>
     </button>
 
     <!-- Rappel actif : une ligne discrète, le plus urgent seulement -->
