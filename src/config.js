@@ -4,6 +4,10 @@ export const PROFILS = {
   marc: { id: "marc", nom: "Marc Joseph" },
 };
 
+/* Clé PUBLIQUE VAPID des push en arrière-plan (la privée vit dans le _worker.js,
+   variable d'environnement VAPID_JWK — jamais dans le front). */
+export const PUSH_VAPID_PUB = "BLBe2WgGanamBvTst47F0NL2pF9c1CMkqXNMdkHFqUQaNI0Y6oVY4KQtxmFW7ChfmXTUBOlnxdtNTCPxr0QUiF8";
+
 export const FORMATS = ["Bouteille (75 cl)", "Magnum (1.5 L)", "Demi (37.5 cl)", "Jéroboam (3 L)", "Autre"];
 
 export const CATS = ["Rouge", "Blanc", "Rosé", "Champagne", "Crémant", "Effervescent", "Spiritueux"];
