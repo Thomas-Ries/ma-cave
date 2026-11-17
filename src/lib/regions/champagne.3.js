@@ -1,0 +1,2 @@
+/* Photo de région champagne · partie 3/3 · Openverse/Flickr CC-BY */
+export default "R9JjX+Io1Pc49ZRza5VgEQa3s94wfUlG3iDdG6rPOB/Ng0yMGqPiX3hATZXnOwn6/Of5vjP9XvBj9T/fP9HznN/jTn6H9jP1P98/SH74fp/3x+r/AIM7fD93D9T/AIHD/TTnD/DefqMuP4/sZw/xzg4+R+2f6PZn7X+M5/54z/L5x4fD9s4/8Dj/AL2zi/LP1XP+705xfL98/wA/v/hj9M/Z/wAA/Tft/wCFfq/786/L9/8Ahv6j/wA4/wADxn+h7z/E8n/B/wCb2x/2+X/gcnL9V/nOX5fx/wAV/p+cfq37Z/p+8/Xv5/6Io/WP+ha37L93OPwz9Q/j/kv2P7mfo37Z+s5/k95z/wCc5+1z/A8mc3x/Of/Z";
