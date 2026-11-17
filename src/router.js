@@ -6,6 +6,7 @@ import AccordsView from "./views/AccordsView.vue";
 import BuesView from "./views/BuesView.vue";
 import EnviesView from "./views/EnviesView.vue";
 import StatsView from "./views/StatsView.vue";
+import CoeursView from "./views/CoeursView.vue";
 
 export default createRouter({
   history: createWebHashHistory(),
@@ -16,6 +17,7 @@ export default createRouter({
     { path: "/carnet", component: CarnetView },
     { path: "/accords", component: AccordsView },
     { path: "/bues", component: BuesView },
+    { path: "/coeurs", component: CoeursView },
     { path: "/envies", component: EnviesView },
     { path: "/stats", component: StatsView }
   ]

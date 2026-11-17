@@ -30,6 +30,7 @@ const noteMoy = computed(() => {
           <span class="block text-[11px] text-muted mt-0.5">{{ new Date(h.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) }}<span v-if="h.millesime"> · {{ h.millesime }}</span></span>
           <span v-if="h.occasion || h.avec" class="block text-[11px] text-accent mt-0.5 truncate"><span v-if="h.occasion">{{ h.occasion }}</span><span v-if="h.occasion && h.avec"> · </span><span v-if="h.avec">{{ h.avec }}</span></span>
         </span>
+        <button @click.stop="cave.toggleCoeur(h)" class="shrink-0 self-center p-1.5" :title="cave.estCoeur(h) ? 'Retirer des coups de cœur' : 'Marquer coup de cœur'"><Ic name="heart" cls="w-5 h-5" :class="cave.estCoeur(h) ? 'text-accent fill-current' : 'text-muted/60'" /></button>
         <span v-if="h.note != null" class="font-serif text-lg tabular-nums shrink-0">{{ h.note }}</span>
       </button>
     </div>

@@ -54,7 +54,14 @@ function suppr() {
             <p class="text-[10px] text-muted uppercase tracking-widest">Carnet de dégustation</p>
             <h2 class="font-serif text-xl leading-tight">{{ h.nom }}</h2>
           </div>
-          <button @click="cave.buesFiche = null" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
+          <div class="flex items-center gap-1 shrink-0">
+            <button @click="cave.toggleCoeur(h)" :title="cave.estCoeur(h) ? 'Retirer des coups de cœur' : 'Marquer coup de cœur'"
+              class="w-9 h-9 rounded-full flex items-center justify-center"
+              :class="cave.estCoeur(h) ? 'bg-accent/10 text-accent' : 'bg-white border border-hairline text-muted'">
+              <Ic name="heart" cls="w-5 h-5" :class="cave.estCoeur(h) ? 'fill-current' : ''" />
+            </button>
+            <button @click="cave.buesFiche = null" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
+          </div>
         </div>
 
         <div class="mt-4 p-3 bg-cream rounded-xl2 text-center">

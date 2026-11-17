@@ -489,7 +489,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <div class="flex-1 min-w-0">
             <p class="font-serif leading-tight truncate">{{ splitNom(b).domaine }}</p>
             <p v-if="splitNom(b).cuvee" class="text-xs text-muted truncate">{{ splitNom(b).cuvee }}</p>
-            <p class="text-xs text-muted truncate mt-0.5">{{ cepageCourt(b) || b.categorie }}<span v-if="b.millesime"> · {{ b.millesime }}</span><span v-if="b.prix != null"> · {{ b.prix }} €</span></p>
+            <p class="text-xs text-muted truncate mt-0.5">{{ cepageCourt(b) || b.categorie }}<span v-if="b.millesime"> · {{ b.millesime }}</span><span v-if="b.prix != null"> · {{ b.prix }} €</span><span v-if="cave.estCoeur(b)" class="text-accent"> · ❤</span></p>
             <span class="inline-block text-[10px] px-1.5 py-0.5 rounded-full mt-1.5" :class="setStatutBadge(b).c">{{ setStatutBadge(b).t }}</span>
           </div>
           <div class="flex flex-col items-center gap-1 shrink-0">

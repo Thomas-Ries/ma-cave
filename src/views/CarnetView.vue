@@ -53,6 +53,16 @@ function vers(p) { router.push(p); }
         <Ic name="chevR" cls="w-4 h-4 text-muted shrink-0" />
       </button>
 
+      <button @click="vers('/coeurs')" class="w-full flex items-center gap-3 bg-white border border-hairline rounded-xl2 p-4 text-left card-sh">
+        <span class="w-10 h-10 rounded-full bg-accent/10 text-accent flex items-center justify-center shrink-0"><Ic name="heart" cls="w-5 h-5 fill-current" /></span>
+        <span class="flex-1 min-w-0">
+          <span class="block text-sm font-medium">Mes coups de cœur</span>
+          <span class="block text-[11px] text-muted mt-0.5">Les vins marqués ❤️, en cave et dans le carnet</span>
+        </span>
+        <span v-if="cave.nbCoeurs()" class="px-2 py-0.5 rounded-full bg-accent text-white text-[11px] shrink-0">{{ cave.nbCoeurs() }}</span>
+        <Ic name="chevR" cls="w-4 h-4 text-muted shrink-0" />
+      </button>
+
       <button @click="vers('/bues')" class="w-full flex items-center gap-3 bg-white border border-hairline rounded-xl2 p-4 text-left card-sh">
         <span class="w-10 h-10 rounded-full bg-ink/5 text-ink flex items-center justify-center shrink-0"><Ic name="archive" cls="w-5 h-5" /></span>
         <span class="flex-1 min-w-0">
