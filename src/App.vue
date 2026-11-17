@@ -216,7 +216,7 @@ function onAvatar(ev) {
 
   <!-- Choix du profil (après le code) — design v2 -->
   <div v-else-if="phase === 'qui'" class="fixed inset-0 z-[997] bg-cream flex flex-col items-center justify-center px-8">
-    <div class="w-16 h-16 rounded-full bg-accent text-white flex items-center justify-center mb-4 shadow-md"><Ic name="glass" cls="w-8 h-8" /></div>
+    <div class="w-16 h-16 rounded-full bg-accent text-white flex items-center justify-center mb-4 shadow-md"><Ic name="cave" cls="w-9 h-9" /></div>
     <h2 class="font-serif text-2xl mb-1">Ma Cave</h2>
     <p class="text-xs text-muted mb-8">Qui boit ce soir ?</p>
     <div class="w-full max-w-xs space-y-3">
