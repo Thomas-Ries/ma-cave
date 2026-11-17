@@ -171,7 +171,7 @@ export const useCave = defineStore("cave", {
 
   actions: {
     /* ---------- Persistance ---------- */
-    save() { try { localStorage.setItem(this.pKeys.db, JSON.stringify(this.db)); } catch {} },
+    save() { try { localStorage.setItem(this.pKeys.db, JSON.stringify(this.db)); } catch {} this.d1Plan(); },
 
     load() {
       let db = null;
@@ -253,7 +253,7 @@ export const useCave = defineStore("cave", {
     /* ---------- Code PIN par profil (optionnel, code admin en secours) ---------- */
     pinKeyOf(id) { return "ma-cave-pin-" + (id || this.PROFIL); },
     hasPin(id) { try { return !!localStorage.getItem(this.pinKeyOf(id)); } catch { return false; } },
-    setPin(code, id) { try { localStorage.setItem(this.pinKeyOf(id), String(pinHash(code))); return true; } catch { return false; } },
+    setPin(code, id) { try { localStorage.setItem(this.pinKeyOf(id), String(pinHash(code))); this.d1Plan(); return true; } catch { return false; } },
     clearPin(id) { try { localStorage.removeItem(this.pinKeyOf(id)); } catch {} },
     verifyPin(code, id) {
       const h = +(localStorage.getItem(this.pinKeyOf(id)) || 0);
@@ -700,6 +700,7 @@ export const useCave = defineStore("cave", {
         if (data) { localStorage.setItem(k, data); localStorage.setItem(k + "-ts", ts || new Date().toISOString()); }
         else { localStorage.removeItem(k); localStorage.removeItem(k + "-ts"); }
       } catch {}
+      this.d1Plan();
     },
     avatarDe(id) { try { return localStorage.getItem("ma-cave-avatar-" + id) || null; } catch { return null; } },
     avatarTs(id) { try { return localStorage.getItem("ma-cave-avatar-" + id + "-ts") || null; } catch { return null; } },
@@ -878,13 +879,179 @@ export const useCave = defineStore("cave", {
       try { this.darkOn = localStorage.getItem("ma-cave-dark") === "1"; } catch { this.darkOn = false; }
       document.documentElement.classList.toggle("dark", this.darkOn);
     },
+
+    /* ==================== BDD Cloudflare D1 (v2.10) ====================
+       Double-run : la synchro Notion historique continue comme avant, et la
+       vraie BDD (D1 + photos KV) reçoit les mêmes données. Tant que le jeton
+       n'est pas posé (onglet Profil), cette couche ne fait strictement rien. */
+
+    d1Token() { try { return localStorage.getItem("ma-cave-token") || ""; } catch { return ""; } },
+    setD1Token(t) {
+      try { localStorage.setItem("ma-cave-token", String(t || "").trim()); } catch {}
+      if (this.d1Token()) { this.toast("Appareil lié à la BDD — première synchro…"); this.d1Pull(true); }
+      else this.toast("BDD déliée de cet appareil");
+    },
+    d1Fetch(path, opts) {
+      const h = { ...(opts.headers || {}) };
+      if (this.d1Token()) h["Authorization"] = "Bearer " + this.d1Token();
+      return fetch(path, { ...opts, headers: h });
+    },
+    d1Read(k, def) { try { return JSON.parse(localStorage.getItem(this.pKeys.db + k) ?? null) ?? def; } catch { return def; } },
+    d1Write(k, v) { try { localStorage.setItem(this.pKeys.db + k, JSON.stringify(v)); } catch {} },
+
+    /* Push incrémental : bouteilles modifiées depuis le dernier envoi, docs
+       (bues, listes, envies, avatar, pin, prefs) dont l'empreinte a changé,
+       photos nouvelles vers le KV. Debounce 4 s après chaque save(). */
+    d1Plan() {
+      if (!this.d1Token() || !navigator.onLine) return;
+      clearTimeout(this._d1T);
+      this._d1T = setTimeout(() => { this.d1Push().catch(() => {}); }, 4000);
+    },
+    d1DocDefs() {
+      return [
+        { k: "bues", data: (this.db.bues || []).slice(-1000) },
+        { k: "buesSuppr", data: (this.db.buesSuppr || []).slice(-300) },
+        { k: "listes", data: this.listesPourSync ? this.listesPourSync().data : this.listes, profil: "thomas" },
+        { k: "envies", data: this.db.envies || [], profil: "thomas" },
+        { k: "avatar", data: this.avatarDe(this.PROFIL), profil: this.PROFIL },
+        { k: "pin-" + this.PROFIL, data: localStorage.getItem(this.pinKeyOf(this.PROFIL)), profil: this.PROFIL },
+        { k: "prefs-soir", data: this.soirPrefs(), profil: this.PROFIL }
+      ];
+    },
+    async d1Push(full) {
+      if (!this.d1Token()) return false;
+      const ts = this.d1Read("-d1push", 0);
+      const maj = new Date().toISOString();
+      const actions = [];
+      const ids = this.d1Read("-d1ids", []);
+      const ph = this.d1Read("-d1ph", {});
+      const vus = [];
+      for (const b of this.db.bouteilles) {
+        vus.push(b.id);
+        if (full || !b.modifLe || b.modifLe > new Date(ts).toISOString()) {
+          actions.push({ t: "b", b: { ...b } });
+          if (b.photo && (full || !ph[b.id] || ph[b.id] !== b.photo.length)) {
+            actions.push({ t: "p", k: "p/" + this.PROFIL + "/" + b.id, data: b.photo });
+            ph[b.id] = b.photo.length;
+          }
+        }
+      }
+      for (const id of ids) if (!vus.includes(id)) actions.push({ t: "b-", id });
+      const empreintes = this.d1Read("-d1doc", {});
+      for (const d of this.d1DocDefs()) {
+        const emp = JSON.stringify(d.data);
+        if (full || empreintes[d.k] !== emp) {
+          actions.push({ t: "d", k: d.k, profil: d.profil || this.PROFIL, data: d.data, maj });
+          empreintes[d.k] = emp;
+        }
+      }
+      if (!actions.length) return true;
+      this.syncBusy(true);
+      try {
+        const res = await this.d1Fetch("/api/db/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, actions }) });
+        const j = await res.json();
+        if (!j.ok) { this.toast("BDD non synchronisée : " + (j.error || res.status)); return false; }
+        this.d1Write("-d1push", Date.now());
+        this.d1Write("-d1ids", vus);
+        this.d1Write("-d1ph", ph);
+        this.d1Write("-d1doc", empreintes);
+        return true;
+      } catch { this.toast("Hors ligne — la BDD sera rattrapée au retour du réseau"); return false; }
+      finally { this.syncBusy(false); }
+    },
+    async d1Pull(manuel) {
+      if (!this.d1Token()) return "off";
+      if (!navigator.onLine) return "offline";
+      this.syncBusy(true);
+      try {
+        const res = await this.d1Fetch("/api/db/pull?profil=" + this.PROFIL);
+        const j = await res.json();
+        if (!j.ok) { if (manuel) this.toast("Récupération BDD impossible : " + (j.error || res.status)); return "fail"; }
+        const ids = new Set(this.d1Read("-d1ids", []));
+        const distants = new Set();
+        let added = 0, updated = 0, deleted = 0;
+        for (const nb of (j.bouteilles || [])) {
+          if (!nb || !nb.id) continue;
+          distants.add(nb.id);
+          const local = this.db.bouteilles.find(b => b.id === nb.id);
+          if (!local) {
+            nb.photo = null;
+            this.db.bouteilles.push(nb);
+            added++;
+          } else if ((nb.modifLe || "") >= (local.modifLe || "")) {
+            const photo = local.photo;
+            Object.assign(local, nb, { photo });
+            updated++;
+          }
+        }
+        /* Supprimées à distance : seulement celles déjà connues de la BDD */
+        for (const b of [...this.db.bouteilles]) {
+          if (ids.has(b.id) && !distants.has(b.id)) { this.db.bouteilles.splice(this.db.bouteilles.indexOf(b), 1); deleted++; }
+        }
+        this.d1Write("-d1ids", [...distants]);
+        /* Docs : fusion par id (le plus récent gagne), sinon doc entier */
+        const emp = this.d1Read("-d1doc", {});
+        for (const [k, doc] of Object.entries(j.docs || {})) {
+          if (!doc || doc.data == null) continue;
+          if (["bues", "buesSuppr", "listes", "envies"].includes(k)) {
+            const cible = k === "listes" ? this.db.listes : k === "envies" ? (this.db.envies = this.db.envies || []) : k === "bues" ? this.db.bues : this.db.buesSuppr;
+            const map = new Map(cible.map(x => [x.id, x]));
+            for (const it of (doc.data || [])) if (it && it.id && (!map.has(it.id) || (doc.maj || "") >= (emp[k + "-maj"] || ""))) map.set(it.id, it);
+            cible.splice(0, cible.length, ...map.values());
+          } else if (k === "avatar") {
+            const lts = this.avatarTs(this.PROFIL);
+            if (!lts || !doc.maj || doc.maj >= lts) this.setAvatar(doc.data, doc.maj);
+          } else if (k === "prefs-soir") {
+            const lts = this.soirPrefsTs();
+            if (!lts || !doc.maj || doc.maj >= lts) { localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(doc.data)); localStorage.setItem(this.pKeys.db + "-soir-prefs-ts", doc.maj || new Date().toISOString()); this.soirVersion++; }
+          } else if (k.startsWith("pin-") && !localStorage.getItem(this.pinKeyOf(this.PROFIL))) {
+            if (doc.data) try { localStorage.setItem(this.pinKeyOf(this.PROFIL), String(doc.data)); } catch {}
+          }
+          emp[k] = JSON.stringify(this.d1DocDefs().find(d => d.k === k)?.data ?? doc.data);
+          emp[k + "-maj"] = doc.maj || "";
+        }
+        this.d1Write("-d1doc", emp);
+        this.d1Write("-d1push", Date.now());
+        this.save();
+        if (added || updated || deleted) this.toast(`BDD rafraîchie — ${added} ajoutée${added > 1 ? "s" : ""}, ${updated} mise${updated > 1 ? "s" : ""} à jour${deleted ? ", " + deleted + " retirée" + (deleted > 1 ? "s" : "") : ""}`);
+        /* Photos manquantes : les récupérer en tâche de fond */
+        this.d1Photos();
+        return "ok";
+      } catch { if (manuel) this.toast("Récupération BDD impossible : coupe réseau ?"); return "fail"; }
+      finally { this.syncBusy(false); }
+    },
+    async d1Photos() {
+      const ph = this.d1Read("-d1ph", {});
+      for (const b of this.db.bouteilles) {
+        if (!b.ph || b.photo || ph[b.id]) continue;
+        try {
+          const res = await this.d1Fetch("/api/db/photo?k=p/" + this.PROFIL + "/" + encodeURIComponent(b.id));
+          if (res.ok) { const v = await res.text(); if (v && v.startsWith("data:image")) { b.photo = v; ph[b.id] = v.length; this.save(); } else ph[b.id] = -1; }
+          else ph[b.id] = -1;
+        } catch {}
+        this.d1Write("-d1ph", ph);
+      }
+    },
+    async d1MigrateNotion() {
+      if (!this.d1Token()) { this.toast("Lis d'abord le jeton de la BDD dans Profil"); return; }
+      this.syncBusy(true);
+      try {
+        const res = await this.d1Fetch("/api/migrate-notion?profil=" + this.PROFIL, { method: "POST" });
+        const j = await res.json();
+        if (!j.ok) { this.toast("Migration impossible : " + (j.error || res.status)); return; }
+        this.toast(`Migration Notion -> BDD : ${j.bouteilles || 0} bouteilles, ${j.docs || 0} documents — récupération…`);
+        await this.d1Pull(true);
+      } catch { this.toast("Migration impossible : coupe réseau ?"); }
+      finally { this.syncBusy(false); }
+    },
+
     /* ---------- Préférences du soir (météo, saison, apogée) ---------- */
     SOIR_DEFAUT: { meteo: true, saison: true, apogee: true, bandeauSoir: true, bandeauApogee: true, voyage: false, lat: null, lon: null, ville: "" },
     soirPrefs() {
       const d = this.SOIR_DEFAUT;
       try { return { ...d, ...JSON.parse(localStorage.getItem(this.pKeys.db + "-soir-prefs") || "{}") }; } catch { return { ...d }; }
     },
-    setSoirPrefs(p) { try { localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(p)); } catch {} this.soirVersion++; },
+    setSoirPrefs(p) { try { localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(p)); } catch {} this.soirVersion++; this.d1Plan(); },
     soirPrefsTs() { try { return localStorage.getItem(this.pKeys.db + "-soir-prefs-ts") || null; } catch { return null; } },
     /* Préférences du soir : sauvegardées dans Notion (page méta « Préférences soir » du profil),
        pour les retrouver après réinstallation de la PWA ou sur un autre appareil. */

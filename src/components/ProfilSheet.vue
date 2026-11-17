@@ -86,6 +86,14 @@ function confirmBioOff() {
 }
 const bioSuppr = ref(false);
 
+/* ---------- BDD Cloudflare (D1) : jeton d'appairage + migration ---------- */
+const d1tok = ref(cave.d1Token());
+const d1Busy = ref(false);
+function lierBdd() { d1Busy.value = true; cave.setD1Token(d1tok.value); setTimeout(() => { d1Busy.value = false; }, 1500); }
+async function pousserBdd() { d1Busy.value = true; await cave.d1Push(true); d1Busy.value = false; }
+async function recupererBdd() { d1Busy.value = true; await cave.d1Pull(true); d1Busy.value = false; }
+async function migrerNotion() { d1Busy.value = true; await cave.d1MigrateNotion(); d1Busy.value = false; }
+
 /* ---------- Préférences du soir (suggestion « Ce soir ») ---------- */
 const prefs = ref(cave.soirPrefs());
 const geoEnCours = ref(false);
@@ -294,7 +302,27 @@ function confirmDisable() {
         </template>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.9.89</p>
+      <!-- BDD Cloudflare -->
+      <p class="text-[10px] text-muted uppercase tracking-widest mb-2 mt-5">Base de données Cloudflare</p>
+      <div class="bg-white border border-hairline rounded-xl2 p-4">
+        <div class="flex items-center gap-2 text-sm">
+          <Ic name="lock" cls="w-4 h-4" :class="d1tok ? 'text-accent' : 'text-muted'" />
+          <span v-if="d1tok">Cet appareil est lié à la BDD — cave, dégustations, listes, envies, photos, préférences</span>
+          <span v-else>Pas encore lié : colle le jeton MA_CAVE_TOKEN pour tout synchroniser</span>
+        </div>
+        <input v-model="d1tok" type="password" placeholder="Jeton d'appairage" class="w-full mt-3 bg-cream border border-hairline rounded-full px-4 py-2.5 text-sm" />
+        <div class="flex gap-2 mt-3">
+          <button @click="lierBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Lier cet appareil</button>
+        </div>
+        <div v-if="d1tok" class="flex gap-2 mt-2">
+          <button @click="pousserBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Envoyer</button>
+          <button @click="recupererBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Récupérer</button>
+          <button @click="migrerNotion" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Importer Notion</button>
+        </div>
+        <p class="text-[10px] text-muted mt-3 leading-relaxed">La synchro Notion continue en parallèle. « Envoyer » pousse tout cet appareil vers la BDD (première fois : migration complète, photos comprises). « Importer Notion » recopie la base Notion dans la BDD sans rien écraser de plus récent.</p>
+      </div>
+
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

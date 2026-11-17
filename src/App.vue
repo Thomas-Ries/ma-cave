@@ -120,7 +120,7 @@ function entrerProfil(id) {
   cave.autoPull().then(st => {
     const prenom = cave.PROFILS[id].nom;
     cave.toast(st === "ok" || st === "fresh" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro : ${cave.derniereRaison || 'retente plus tard'}`);
-  }); cave.flushQueue(); cave.autoBackup();
+  }); cave.flushQueue(); cave.autoBackup(); cave.d1Pull(false);
   cave.notifApogees(); cave.notifListes(); rattrapeRappels();
 }
 

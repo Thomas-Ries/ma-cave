@@ -539,6 +539,141 @@ function pageApropos() {
   return pubPage("Ma Cave — ta cave à vin, dans ta poche", body);
 }
 
+
+/* ==================== BDD Cloudflare D1 (v2.10) ====================
+ * Une vraie BDD SQLite côté Cloudflare, en plus de la synchro Notion historique.
+ * Deux tables seulement, créées automatiquement au premier appel :
+ *   - bouteilles : UNE LIGNE PAR BOUTEILLE (dernier qui écrit gagne, par modifLe)
+ *   - docs       : un document JSON par domaine et par profil (bues, listes,
+ *                  envies, avatar, pin, prefs-soir…), dernier qui écrit gagne.
+ * Photos (bouteilles + envies) : namespace KV « PHOTOS », clé p/<profil>/<id>.
+ * Sécurité : toutes les routes /api/db/* exigent le jeton MA_CAVE_TOKEN
+ * (variable Pages), envoyé par l'app en « Authorization: Bearer … ». */
+
+let D1_READY = false;
+async function d1(env) {
+  if (!env.DB) throw new Error("Binding D1 absent : Settings > Functions > D1 database bindings > DB");
+  if (!D1_READY) {
+    await env.DB.exec(`CREATE TABLE IF NOT EXISTS bouteilles (
+      id TEXT PRIMARY KEY, profil TEXT NOT NULL, maj_le TEXT, data TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS docs (
+      k TEXT NOT NULL, profil TEXT NOT NULL, maj_le TEXT, data TEXT NOT NULL,
+      PRIMARY KEY (k, profil));`);
+    D1_READY = true;
+  }
+  return env.DB;
+}
+
+/* Jeton d'appairage : si la variable MA_CAVE_TOKEN n'est pas encore posée sur le
+   Pages, on laisse passer (l'ancien comportement public) pour ne rien casser. */
+function authOk(request, env) {
+  if (!env.MA_CAVE_TOKEN) return true;
+  return (request.headers.get("Authorization") || "") === "Bearer " + env.MA_CAVE_TOKEN;
+}
+
+const PHOTO_MAX = 25 * 1024 * 1024; /* limite d'une valeur KV (base64 inclus) */
+
+async function dbPush(request, env) {
+  let body = {};
+  try { body = await request.json(); } catch {}
+  const profil = body.profil || "thomas";
+  const actions = Array.isArray(body.actions) ? body.actions.slice(0, 2000) : [];
+  const db = await d1(env);
+  const stmts = [], photos = [], photoDels = [];
+  for (const a of actions) {
+    if (!a || typeof a !== "object") continue;
+    if (a.t === "b" && a.b && a.b.id) {
+      const { photo, ...data } = a.b;
+      if (photo) data.ph = 1; /* un marqueur : la photo vit dans le KV */
+      stmts.push({
+        sql: "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+             "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data, profil = excluded.profil " +
+             "WHERE excluded.maj_le >= bouteilles.maj_le",
+        params: [a.b.id, profil, a.b.modifLe || new Date().toISOString(), JSON.stringify(data)]
+      });
+    } else if (a.t === "b-" && a.id) {
+      stmts.push({ sql: "DELETE FROM bouteilles WHERE id = ?1 AND profil = ?2", params: [a.id, profil] });
+      if (env.PHOTOS) photoDels.push("p/" + profil + "/" + a.id);
+    } else if (a.t === "d" && a.k) {
+      const pr = a.profil || profil;
+      stmts.push({
+        sql: "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+             "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+             "WHERE excluded.maj_le >= docs.maj_le",
+        params: [a.k, pr, a.maj || new Date().toISOString(), JSON.stringify(a.data ?? null)]
+      });
+    } else if (a.t === "p" && a.k && env.PHOTOS && typeof a.data === "string" && a.data.length < PHOTO_MAX) {
+      photos.push([a.k, a.data]);
+    } else if (a.t === "p-" && a.k && env.PHOTOS) {
+      photoDels.push(a.k);
+    }
+  }
+  if (stmts.length) await db.batch(stmts);
+  for (const [k, v] of photos) await env.PHOTOS.put(k, v);
+  for (const k of photoDels) { try { await env.PHOTOS.delete(k); } catch {} }
+  return json({ ok: true, n: stmts.length, photos: photos.length });
+}
+
+async function dbPull(env, profil) {
+  const db = await d1(env);
+  const bres = await db.prepare("SELECT data FROM bouteilles WHERE profil = ?1").bind(profil).all();
+  const docs = {};
+  const dres = await db.prepare("SELECT k, data, maj_le FROM docs WHERE profil IN (?1, 'thomas')").bind(profil).all();
+  for (const r of (dres.results || [])) {
+    try { docs[r.k] = { data: JSON.parse(r.data), maj: r.maj_le }; } catch { docs[r.k] = { data: null, maj: r.maj_le }; }
+  }
+  const bouteilles = (bres.results || []).map(r => { try { return JSON.parse(r.data); } catch { return null; } }).filter(Boolean);
+  return json({ ok: true, profil, bouteilles, docs, maj: new Date().toISOString() });
+}
+
+/* Migration Notion -> D1 : lit la base Notion du profil (bouteilles + pages méta)
+   et écrit tout dans D1. Les lignes D1 plus récentes ne sont pas écrasées. */
+async function dbMigrateNotion(env, profil) {
+  const db = await d1(env);
+  const token = env.NOTION_TOKEN;
+  const dbId = dbIdFor(env, profil);
+  if (!token || !dbId) return json({ ok: false, error: "Variables Notion absentes" }, 500);
+  const pages = (await queryAll(token, dbId)).filter(p => !isMetaPage(p));
+  const stmts = [];
+  for (const p of pages) {
+    const b = fromNotionPage(p);
+    if (!b || !b.nom) continue;
+    stmts.push({
+      sql: "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+           "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+           "WHERE excluded.maj_le >= bouteilles.maj_le",
+      params: [b.id, profil, b.modifLe || new Date().toISOString(), JSON.stringify(b)]
+    });
+  }
+  /* Pages méta : avatar, listes, envies, bues, préférences soir -> docs */
+  const metas = [
+    ["avatar", AVATAR_TITLE, AVATAR_PROP],
+    ["prefs-soir", PREFS_TITLE, PREFS_PROP],
+    ["bues", BUES_TITLE, BUES_PROP],
+    ["listes", LISTES_TITLE, LISTES_PROP],
+    ["envies", ENVIES_TITLE, ENVIES_PROP]
+  ];
+  let docs = 0;
+  for (const [k, title, prop] of metas) {
+    /* metaGet renvoie une Response JSON : on la lit */
+    const rr = await metaGet(env, k === "listes" || k === "envies" ? "thomas" : profil, title, prop);
+    let j = null;
+    try { j = await rr.json(); } catch {}
+    if (!j || !j.ok || !j.data) continue;
+    let data = j.data;
+    if (k === "bues" && data && !Array.isArray(data) && Array.isArray(data.bues)) data = data.bues;
+    stmts.push({
+      sql: "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+           "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+           "WHERE excluded.maj_le >= docs.maj_le",
+      params: [k, k === "listes" || k === "envies" ? "thomas" : profil, j.edited || new Date().toISOString(), JSON.stringify(data)]
+    });
+    docs++;
+  }
+  if (stmts.length) await db.batch(stmts);
+  return json({ ok: true, profil, bouteilles: pages.length, docs, maj: new Date().toISOString() });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -609,6 +744,23 @@ export default {
       if (request.method === "GET") return metaGet(env, "thomas", ENVIES_TITLE, ENVIES_PROP);
       if (request.method === "POST") return metaPost(request, env, ENVIES_TITLE, ENVIES_PROP, listesValides, "thomas");
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
+    }
+
+    /* --- BDD D1 : tout exige le jeton d'appairage (401 sinon) --- */
+    if (url.pathname.startsWith("/api/db/") || url.pathname === "/api/migrate-notion") {
+      if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
+      if (!env.DB) return json({ ok: false, error: "Binding D1 absent : Settings > Functions > D1 bindings > DB" }, 500);
+      if (request.method === "GET" && url.pathname === "/api/db/pull") return dbPull(env, url.searchParams.get("profil") || "thomas");
+      if (request.method === "POST" && url.pathname === "/api/db/push") return dbPush(request, env).catch(e => json({ ok: false, error: String(e.message || e) }, 500));
+      if (request.method === "GET" && url.pathname === "/api/db/photo") {
+        const k = url.searchParams.get("k") || "";
+        if (!env.PHOTOS) return json({ ok: false, error: "Binding KV absent : PHOTOS" }, 500);
+        const v = await env.PHOTOS.get(k);
+        if (!v) return json({ ok: false, error: "photo inconnue" }, 404);
+        return new Response(v, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "private, max-age=86400" } });
+      }
+      if (request.method === "POST" && url.pathname === "/api/migrate-notion") return dbMigrateNotion(env, url.searchParams.get("profil") || "thomas").catch(e => json({ ok: false, error: String(e.message || e) }, 500));
+      return json({ ok: false, error: "Route inconnue" }, 404);
     }
 
     if (url.pathname === "/api/sync-notion") {
