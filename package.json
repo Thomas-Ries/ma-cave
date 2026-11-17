@@ -1,12 +1,13 @@
 {
   "name": "ma-cave",
   "private": true,
-  "version": "2.10.11",
+  "version": "2.11.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node test/apogee.test.js && node test/dictee.test.js && node test/face.test.js && node test/template.test.js && node test/d1.test.js"
+    "test": "node test/apogee.test.js && node test/dictee.test.js && node test/face.test.js && node test/template.test.js && node test/d1.test.js",
+    "prebuild": "node tools/gen-icons.cjs"
   },
   "dependencies": {
     "pinia": "^2.1.7",

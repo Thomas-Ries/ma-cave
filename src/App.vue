@@ -176,7 +176,7 @@ function onAvatar(ev) {
 
     <div class="relative">
       <span class="absolute inset-0 rounded-full bg-accent/20 splash-ring"></span>
-      <div class="relative w-20 h-20 rounded-full bg-accent text-white flex items-center justify-center mb-5 shadow-lg splash-pop"><Ic name="glass" cls="w-10 h-10" /></div>
+      <div class="relative w-20 h-20 rounded-full bg-accent text-white flex items-center justify-center mb-5 shadow-lg splash-pop"><Ic name="cave" cls="w-11 h-11" /></div>
     </div>
     <h1 class="font-serif text-4xl splash-rise">Ma Cave</h1>
     <p class="text-center text-[10px] text-muted mt-3 tracking-[0.14em] uppercase splash-rise-2">Ma cave · Mes bouteilles · Mon rythme</p>

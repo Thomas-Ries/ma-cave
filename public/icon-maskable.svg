@@ -1,18 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Ma Cave">
+  <!-- Version maskable : fond plein, motif réduit dans la zone de sûreté (~74 %) -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="bgm" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#8A3547"/>
       <stop offset="1" stop-color="#6A2836"/>
     </linearGradient>
   </defs>
-
-  <!-- Version maskable : fond plein sur toute la zone, verre réduit dans la zone de sûreté -->
-  <rect width="120" height="120" fill="url(#bg)"/>
-
-  <circle cx="60" cy="60" r="34" fill="#FAF6F1" opacity="0.05"/>
-
-  <!-- Verre à vin blanc, contenu dans le cercle central de sûreté (~66 %) -->
-  <g transform="translate(41 41) scale(1.58)" fill="none" stroke="#FAF6F1" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M8 3h8m-8 0c0 4.418 1.79 8 4 8s4-3.582 4-8M12 11v8m-4 2h8"/>
+  <rect width="120" height="120" fill="url(#bgm)"/>
+  <g transform="translate(60 60) scale(0.74) translate(-60 -60)">
+    <circle cx="60" cy="58" r="45" fill="#FAF6F1" opacity="0.05"/>
+    <path d="M26 94V57c0-18.8 15.2-31 34-31s34 12.2 34 31v37Z" fill="#52202C"/>
+    <path d="M26 94V57c0-18.8 15.2-31 34-31s34 12.2 34 31v37" fill="none" stroke="#FAF6F1" stroke-width="3.4" stroke-linecap="round"/>
+    <g stroke="#FAF6F1" stroke-width="1.5" opacity="0.65" stroke-linecap="round">
+      <path d="M44.5 30.6l3.6 5.2"/><path d="M75.5 30.6l-3.6 5.2"/><path d="M33.6 43.4l5.8 3"/>
+    </g>
+    <g>
+      <rect x="41.5" y="70" width="7" height="22" rx="2" fill="#FAF6F1"/><rect x="44.1" y="62" width="2.8" height="9" rx="1.2" fill="#FAF6F1"/><rect x="43" y="76" width="4.6" height="6.5" rx="1" fill="#7A2E3E"/>
+      <rect x="56.5" y="70" width="7" height="22" rx="2" fill="#D9C589"/><rect x="59.1" y="62" width="2.8" height="9" rx="1.2" fill="#D9C589"/><rect x="58" y="76" width="4.6" height="6.5" rx="1" fill="#7A2E3E"/>
+      <rect x="71.5" y="70" width="7" height="22" rx="2" fill="#FAF6F1"/><rect x="74.1" y="62" width="2.8" height="9" rx="1.2" fill="#FAF6F1"/><rect x="73" y="76" width="4.6" height="6.5" rx="1" fill="#7A2E3E"/>
+    </g>
   </g>
 </svg>
