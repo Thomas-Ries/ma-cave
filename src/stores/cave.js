@@ -888,8 +888,7 @@ export const useCave = defineStore("cave", {
     d1Token() { try { return localStorage.getItem("ma-cave-token") || ""; } catch { return ""; } },
     setD1Token(t) {
       try { localStorage.setItem("ma-cave-token", String(t || "").trim()); } catch {}
-      if (this.d1Token()) { this.toast("Appareil lié à la BDD — première synchro…"); this.d1Pull(true); }
-      else this.toast("BDD déliée de cet appareil");
+      this.toast(t ? "Jeton enregistré — teste la connexion ci-dessous" : "BDD déliée de cet appareil");
     },
     d1Fetch(path, opts) {
       const h = { ...(opts.headers || {}) };
@@ -955,6 +954,7 @@ export const useCave = defineStore("cave", {
         this.d1Write("-d1ids", vus);
         this.d1Write("-d1ph", ph);
         this.d1Write("-d1doc", empreintes);
+        if (full) this.toast(`BDD à jour — ${actions.filter(a => a.t === "b").length} bouteille${actions.filter(a => a.t === "b").length > 1 ? "s" : ""} envoyée${actions.filter(a => a.t === "b").length > 1 ? "s" : ""}, ${j.photos || 0} photo${(j.photos || 0) > 1 ? "s" : ""}`);
         return true;
       } catch { this.toast("Hors ligne — la BDD sera rattrapée au retour du réseau"); return false; }
       finally { this.syncBusy(false); }
@@ -966,7 +966,12 @@ export const useCave = defineStore("cave", {
       try {
         const res = await this.d1Fetch("/api/db/pull?profil=" + this.PROFIL);
         const j = await res.json();
-        if (!j.ok) { if (manuel) this.toast("Récupération BDD impossible : " + (j.error || res.status)); return "fail"; }
+        if (!j.ok) {
+          if (manuel) this.toast(res.status === 401
+            ? "Jeton refusé : vérifie la valeur MA_CAVE_TOKEN dans Cloudflare"
+            : "Récupération BDD impossible : " + (j.error || res.status));
+          return "refuse";
+        }
         const ids = new Set(this.d1Read("-d1ids", []));
         const distants = new Set();
         let added = 0, updated = 0, deleted = 0;
@@ -1014,6 +1019,7 @@ export const useCave = defineStore("cave", {
         this.d1Write("-d1push", Date.now());
         this.save();
         if (added || updated || deleted) this.toast(`BDD rafraîchie — ${added} ajoutée${added > 1 ? "s" : ""}, ${updated} mise${updated > 1 ? "s" : ""} à jour${deleted ? ", " + deleted + " retirée" + (deleted > 1 ? "s" : "") : ""}`);
+        else if (manuel) this.toast("BDD joignable — rien de neuf à récupérer pour l'instant");
         /* Photos manquantes : les récupérer en tâche de fond */
         this.d1Photos();
         return "ok";

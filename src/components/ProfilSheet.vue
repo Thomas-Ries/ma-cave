@@ -89,7 +89,20 @@ const bioSuppr = ref(false);
 /* ---------- BDD Cloudflare (D1) : jeton d'appairage + migration ---------- */
 const d1tok = ref(cave.d1Token());
 const d1Busy = ref(false);
-function lierBdd() { d1Busy.value = true; cave.setD1Token(d1tok.value); setTimeout(() => { d1Busy.value = false; }, 1500); }
+const d1Etat = ref(null);
+const d1Verif = ref("");
+async function lierBdd() {
+  d1Busy.value = true; d1Etat.value = null;
+  cave.setD1Token(d1tok.value);
+  if (!d1tok.value.trim()) { d1Etat.value = "vide"; d1Verif.value = "Colle d'abord le jeton MA_CAVE_TOKEN dans le champ."; d1Busy.value = false; return; }
+  d1Verif.value = "Test de la connexion…";
+  const st = await cave.d1Pull(true);
+  d1Etat.value = st;
+  d1Verif.value = st === "ok" ? "Connexion réussie : la BDD répond. Tu peux envoyer tes données."
+    : st === "refuse" ? "Connexion refusée : le jeton ne correspond pas à MA_CAVE_TOKEN (ou la variable n'est pas encore déployée côté Cloudflare)."
+    : "BDD injoignable : vérifie ta connexion puis réessaie.";
+  d1Busy.value = false;
+}
 async function pousserBdd() { d1Busy.value = true; await cave.d1Push(true); d1Busy.value = false; }
 async function recupererBdd() { d1Busy.value = true; await cave.d1Pull(true); d1Busy.value = false; }
 async function migrerNotion() { d1Busy.value = true; await cave.d1MigrateNotion(); d1Busy.value = false; }
@@ -314,6 +327,7 @@ function confirmDisable() {
         <div class="flex gap-2 mt-3">
           <button @click="lierBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Lier cet appareil</button>
         </div>
+        <p v-if="d1Verif" class="text-[12px] mt-2 font-medium" :class="d1Etat === 'ok' ? 'text-accent' : d1Etat === 'vide' ? 'text-muted' : 'text-red'">{{ d1Verif }}</p>
         <div v-if="d1tok" class="flex gap-2 mt-2">
           <button @click="pousserBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Envoyer</button>
           <button @click="recupererBdd" :disabled="d1Busy" class="flex-1 py-2.5 rounded-full border border-hairline text-sm">Récupérer</button>
@@ -322,7 +336,7 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">La synchro Notion continue en parallèle. « Envoyer » pousse tout cet appareil vers la BDD (première fois : migration complète, photos comprises). « Importer Notion » recopie la base Notion dans la BDD sans rien écraser de plus récent.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.0</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.10.1</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
