@@ -25,7 +25,7 @@ const prenom = computed(() => (cave.PROFILS[cave.PROFIL]?.nom || "").split(" ")[
 /* ===== Suggestion du soir (logique inchangée) ===== */
 const ceSoir = ref(null);
 const meteo = ref(null);
-const prefsSoir = ref(cave.soirPrefs());
+const prefsSoir = computed(() => cave.soirPrefs());
 const soirOff = ref(false);
 function soirKey() { return cave.pKeys.db + "-soir" }
 function soirState() { try { return JSON.parse(localStorage.getItem(soirKey()) || "null") } catch { return null } }
@@ -62,6 +62,8 @@ async function initSoir() {
   }
 }
 onMounted(() => initSoir());
+/* Position/prefs changées dans le Profil → on relit la météo tout de suite (le bandeau suit) */
+watch(prefsSoir, (p, oldP) => { if (p.lat !== oldP.lat || p.lon !== oldP.lon || p.ville !== oldP.ville) initSoir(); });
 
 /* ===== Vedette : suggestion du soir, sinon proposition plaisir ===== */
 const plaisirOff = ref(false);

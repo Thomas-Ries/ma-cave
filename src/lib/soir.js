@@ -114,21 +114,24 @@ export async function meteoActuelle(lat, lon) {
 /* Géocodage d'une ville saisie (Open-Meteo, gratuit) → { lat, lon, ville } */
 export async function chercheVille(nom) {
   try {
-    const res = await fetch("https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(nom) + "&count=1&language=fr&format=json");
+    const res = await fetch("https://geocoding-api.open-meteo.com/v1/search?name=" + encodeURIComponent(nom) + "&count=5&language=fr&format=json");
     if (!res.ok) return null;
     const j = await res.json();
-    const r = (j.results || [])[0];
-    return r ? { lat: r.latitude, lon: r.longitude, ville: r.name } : null;
+    const rs = j.results || [];
+    if (!rs.length) return null;
+    /* Préférer une ville de France (homonymes fréquents : Strasbourg, Vienne…), sinon la 1re */
+    const r = rs.find(x => (x.country_code || "").toUpperCase() === "FR") || rs[0];
+    return { lat: r.latitude, lon: r.longitude, ville: r.name };
   } catch { return null; }
 }
 
 /* Ville détectée depuis la position (Nominatim/OpenStreetMap, gratuit) */
 export async function villeDepuis(lat, lon) {
   try {
-    const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&accept-language=fr&zoom=12");
+    const res = await fetch("https://nominatim.openstreetmap.org/reverse?lat=" + lat + "&lon=" + lon + "&format=json&accept-language=fr&zoom=14");
     if (!res.ok) return "";
     const j = await res.json();
     const a = j.address || {};
-    return a.city || a.town || a.village || a.municipality || j.name || "";
+    return a.city || a.town || a.village || a.municipality || a.county || j.name || "";
   } catch { return ""; }
 }
