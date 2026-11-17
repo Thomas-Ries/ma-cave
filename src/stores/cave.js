@@ -5,6 +5,7 @@ import { estimeApogee } from "../lib/apogee.js";
 import { importKey, previewImport, applyImportRows, parseImportFile } from "../lib/import.js";
 import { ilYA } from "../util.js";
 import { notifie, planifieRappel, rattrapeRappels } from "../lib/notifs.js";
+import { pushEtat, pushActiver, pushDesactiver, pushMajDigest } from "../lib/push.js";
 
 /* File unique des appels Notion (voir sendNotion) */
 let _notionChain = Promise.resolve();
@@ -26,6 +27,7 @@ export const useCave = defineStore("cave", {
     d1PullTs: 0,           /* horodatage du dernier pull BDD réussi (pastille de synchro) */
     d1Nb: null,            /* nb de bouteilles que la BDD renvoie (décompte Profil) */
     d1Log: [],             /* journal des événements BDD notables (suppressions, renvois…) */
+    pushNotifEtat: "inconnu", /* "on" | "pret" | "refuse" | "non-demandee" | "incompatible" (push arrière-plan) */
     combien: null,          /* question « tu sors combien ? » quand quantité > 1 */
     actu: null,             /* dernière actu du vin (RSS via le worker) */
     actuErreur: false,
@@ -296,6 +298,7 @@ export const useCave = defineStore("cave", {
       if (locked && !body.classList.contains("no-scroll")) {
         this._scrollY = window.scrollY || 0;
         body.classList.add("no-scroll");
+
         body.style.top = (-this._scrollY) + "px";
       } else if (!locked && body.classList.contains("no-scroll")) {
         body.classList.remove("no-scroll");
@@ -596,6 +599,7 @@ export const useCave = defineStore("cave", {
     /* Traduction des échecs de synchro en phrase humaine (pas de jargon dev) */
     raisonSync(res, j) {
       if (typeof navigator !== "undefined" && !navigator.onLine) return "tu es hors ligne — rien n’a pu partir";
+
       const s = res ? res.status : 0;
       const err = ((j && j.error) || "") + " " + ((j && j.code) || "");
       /* Codes Notion réels (renvoyés par le worker) → phrases humaines exactes */
@@ -896,6 +900,7 @@ export const useCave = defineStore("cave", {
     previewImport(rows) { return previewImport(rows, this.db); },
     applyImportRows(rows) { return applyImportRows(rows, this.db, uid, estimeApogee); },
 
+
     /* ---------- Mode sombre « cave » (persisté par appareil, pas par profil) ---------- */
     initDark() {
       try { this.darkOn = localStorage.getItem("ma-cave-dark") === "1"; } catch { this.darkOn = false; }
@@ -1106,6 +1111,7 @@ export const useCave = defineStore("cave", {
         else console.log("[BDD] pull : rien de neuf");
         /* Photos manquantes : les récupérer en tâche de fond */
         this.d1Photos();
+        this.pushMaj();
         return "ok";
       } catch (e) { console.error("[BDD] pull échoué :", e); return "fail"; }
       finally { this.syncBusy(false); }
@@ -1195,6 +1201,7 @@ export const useCave = defineStore("cave", {
         light.envies = (light.envies || []).map(e => ({ ...e, items: (e.items || []).map(i => ({ ...i, photos: [] })) }));
         const key = this.pKeys.db + "-snaps";
         let snaps = [];
+
         try { snaps = JSON.parse(localStorage.getItem(key) || "[]"); } catch {}
         snaps = [light, ...snaps.filter(x => x.date !== light.date)].slice(0, 3);
         try { localStorage.setItem(key, JSON.stringify(snaps)); } catch {}
@@ -1256,6 +1263,45 @@ export const useCave = defineStore("cave", {
 
     /* ---------- Rappels (notifications locales) ---------- */
     notifAutorisees() { return typeof Notification !== "undefined" && Notification.permission === "granted"; },
+
+    /* ---------- Push en arrière-plan (v2.20) ---------- */
+    /* Résumé envoyé au cron : les compteurs d'apogées + 3 noms pour la notif.
+       Recalculé à chaque synchro BDD → toujours frais sans surveillance serveur. */
+    pushDigest() {
+      const st = this.apogeeStats;
+      const year = new Date().getFullYear();
+      const top = [];
+      for (const b of this.db.bouteilles) {
+        if (!b.quantite) continue;
+        if (this.statutApo(b, year) === "boire" && top.length < 3) top.push([b.nom, b.millesime].filter(Boolean).join(" "));
+        if (top.length >= 3) break;
+      }
+      return { boire: st.boire, passe: st.passe, bientot: st.bientot, top };
+    },
+    async pushInit() { this.pushNotifEtat = await pushEtat(); },
+    async pushOn() {
+      try {
+        await pushActiver(this.d1Token(), this.PROFIL, this.pushDigest);
+        this.pushNotifEtat = "on";
+        this.toast("Rappels activés — tu seras prévenu même app fermée");
+        return true;
+      } catch (e) {
+        this.pushNotifEtat = await pushEtat();
+        this.toast("Push : " + String(e.message || e));
+        return false;
+      }
+    },
+    async pushOff() {
+      try { await pushDesactiver(this.d1Token()); } catch {}
+      this.pushNotifEtat = await pushEtat();
+      this.toast("Rappels en arrière-plan désactivés");
+    },
+    /* Après chaque synchro BDD : rafraîchit le résumé du cron, silencieux */
+    async pushMaj() {
+      if (this.pushNotifEtat !== "on") return;
+      try { await pushMajDigest(this.d1Token(), this.pushDigest); } catch {}
+    },
+
     notifApogees() {
       if (!this.notifAutorisees()) return;
       const key = this.pKeys.db + "-notif";
