@@ -1,4 +1,4 @@
-successfully downloaded text file (SHA: 56fd78860e39577915a6413930bf8f8cb8955ddc)<script setup>
+<script setup>
 /* Gestion du profil : avatar + code de déverrouillage optionnel (activable, modifiable, désactivable).
    Le code admin de Thomas débloque n'importe quel profil en cas d'oubli. */
 import { ref, computed, watch } from "vue";
