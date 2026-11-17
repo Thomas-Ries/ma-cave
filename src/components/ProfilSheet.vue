@@ -33,7 +33,7 @@ const pin1 = ref("");
 const pin2 = ref("");
 const pinMsg = ref("");
 
-watch(() => props.open, v => { if (v) { pinMode.value = null; pin1.value = ""; pin2.value = ""; pinMsg.value = ""; autoReseau(); } });
+watch(() => props.open, v => { if (v) { pinMode.value = null; pin1.value = ""; pin2.value = ""; pinMsg.value = ""; autoReseau(); majPushEtat(); } });
 
 const aPin = computed(() => cave.hasPin(cave.PROFIL));
 
@@ -97,6 +97,23 @@ const d1Import = computed(() => {
   return { vins: b.filter(x => x.type !== "Spiritueux").length, spirits: b.filter(x => x.type === "Spiritueux").length };
 });
 const d1SyncTs = computed(() => cave.d1PullTs || cave.d1Read("-d1push", 0));
+
+/* Rappels en arrière-plan : état réel de l'abonnement push de CET appareil */
+const pushNotif = ref("inconnu");
+const pushAide = computed(() => ({
+  on: "Chaque soir, le serveur regarde tes apogées et te prévient même si l'app est fermée. iOS : app installée sur l'écran d'accueil requise.",
+  pret: "Permission déjà accordée — un tap sur Activer et c'est parti.",
+  refuse: "Permission refusée sur cet appareil — Réglages > Ma Cave > Notifications pour la réactiver, puis Activer.",
+  "non-demandee": "Push serveur : préviens-toi des apogées même app fermée. iOS : app installée sur l'écran d'accueil requise.",
+  incompatible: "Ce navigateur ne sait pas recevoir de push — installe la PWA sur l'écran d'accueil (iOS ≥ 16.4).",
+  inconnu: "Vérification de l'état des notifications…",
+}[pushNotif.value] || ""));
+async function majPushEtat() { pushNotif.value = await cave.pushInit(); }
+async function togglePush() {
+  if (pushNotif.value === "on") await cave.pushOff();
+  else pushNotif.value = (await cave.pushOn()) ? "on" : await cave.pushInit();
+}
+
 /* Journal BDD : les 3 derniers événements notables */
 const JOURNAL_LABELS = {
   suppressions: n => n + " bouteilles supprimées → propagées à la BDD",
@@ -400,8 +417,21 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
+      <!-- Rappels en arrière-plan : push serveur (même app fermée) -->
+      <div class="mt-3 bg-white border border-hairline rounded-xl2 p-4">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 text-sm min-w-0">
+            <Ic name="bell" cls="w-4 h-4 shrink-0" :class="pushNotif === 'on' ? 'text-gold' : 'text-muted'" />
+            <span>Rappels en arrière-plan</span>
+          </div>
+          <button @click="togglePush" class="shrink-0 text-xs px-3 py-1.5 rounded-full" :class="pushNotif === 'on' ? 'bg-cream border border-hairline text-muted' : 'bg-accent text-white'">{{ pushNotif === 'on' ? 'Désactiver' : 'Activer' }}</button>
+        </div>
+        <p class="text-[10px] text-muted mt-2 leading-relaxed">{{ pushAide }}</p>
+        <p v-if="pushNotif === 'on'" class="text-[10px] text-gold mt-1.5 font-medium">{{ cave.pushDigest.boire }} bouteille{{ cave.pushDigest.boire > 1 ? 's' : '' }} à l'apogée suivie{{ cave.pushDigest.boire > 1 ? 's' : '' }} par le rappel du soir</p>
+      </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.19.1</p>
+
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.20.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
