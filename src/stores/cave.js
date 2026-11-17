@@ -24,6 +24,8 @@ export const useCave = defineStore("cave", {
     apogeeFiltre: false,    /* filtre « à boire cette année » (bandeau Cave) */
     derniereRaison: null, /* raison humaine du dernier échec de synchro */
     d1PullTs: 0,           /* horodatage du dernier pull BDD réussi (pastille de synchro) */
+    d1Nb: null,            /* nb de bouteilles que la BDD renvoie (décompte Profil) */
+    d1Log: [],             /* journal des événements BDD notables (suppressions, renvois…) */
     combien: null,          /* question « tu sors combien ? » quand quantité > 1 */
     actu: null,             /* dernière actu du vin (RSS via le worker) */
     actuErreur: false,
@@ -918,6 +920,11 @@ export const useCave = defineStore("cave", {
     },
     d1Read(k, def) { try { return JSON.parse(localStorage.getItem(this.pKeys.db + k) ?? null) ?? def; } catch { return def; } },
     d1Write(k, v) { try { localStorage.setItem(this.pKeys.db + k, JSON.stringify(v)); } catch {} },
+    /* Journal BDD : garde les 12 derniers événements notables (visible dans le Profil) */
+    d1Journal(type, n) {
+      this.d1Log = [{ ts: Date.now(), type, n: n ?? null }, ...this.d1Log].slice(0, 12);
+      try { this.d1Write("-d1journal", this.d1Log); } catch {}
+    },
 
     /* Push incrémental : bouteilles modifiées depuis le dernier envoi, docs
        (bues, listes, envies, avatar, pin, prefs) dont l'empreinte a changé,
@@ -956,7 +963,24 @@ export const useCave = defineStore("cave", {
           }
         }
       }
-      for (const id of ids) if (!vus.includes(id)) actions.push({ t: "b-", id });
+      /* Garde-fou suppressions : au-delà de 5 bouteilles à retirer de la BDD d'un coup,
+         on exige une confirmation (max 1 demande/heure si refusée). Tant que ce n'est
+         pas confirmé, on pousse tout SAUF les suppressions — impossible de vider la
+         BDD (et donc les caves des autres appareils) par accident. */
+      const dels = ids.filter(id => !vus.includes(id));
+      let delsSautes = false;
+      if (dels.length > 5 && !this._d1DelForce && Date.now() > (this._d1DelAsk || 0)) {
+        this._d1DelAsk = Date.now() + 3600e3;
+        this.d1Journal("suppressions-proposees", dels.length);
+        console.warn("[BDD]", dels.length, "suppressions en attente — confirmation demandée");
+        this.askConfirm(
+          "Supprimer " + dels.length + " bouteilles de la BDD ?",
+          "Supprimer",
+          () => { this._d1DelForce = true; this.d1Journal("suppressions", dels.length); this.d1Push().catch(() => {}); }
+        );
+        delsSautes = true;
+      }
+      if (!delsSautes) for (const id of dels) actions.push({ t: "b-", id });
       const empreintes = this.d1Read("-d1doc", {});
       for (const d of this.d1DocDefs()) {
         const emp = JSON.stringify(d.data);
@@ -972,9 +996,12 @@ export const useCave = defineStore("cave", {
         const j = await res.json();
         if (!j.ok) { console.error("[BDD] push refusé :", res.status, j.error); return false; }
         this.d1Write("-d1push", Date.now());
-        this.d1Write("-d1ids", vus);
+        this.d1Write("-d1ids", delsSautes ? ids : vus);
         this.d1Write("-d1ph", ph);
         this.d1Write("-d1doc", empreintes);
+        if (full) { this.d1Nb = vus.length; this.d1Journal("renvoi-complet", vus.length); }
+        else if (dels.length && !delsSautes) this.d1Nb = vus.length;
+        this._d1DelForce = false;
         return true;
       } catch (e) { console.error("[BDD] push échoué :", e); return false; }
       finally { this.syncBusy(false); }
@@ -991,6 +1018,7 @@ export const useCave = defineStore("cave", {
           console.error("[BDD] pull refusé :", res.status, j.error);
           return "refuse";
         }
+        this.d1Nb = (j.bouteilles || []).length;
         const ids = new Set(this.d1Read("-d1ids", []));
         const distants = new Set();
         let added = 0, updated = 0, deleted = 0;
@@ -1031,6 +1059,7 @@ export const useCave = defineStore("cave", {
         if (!distants.size && this.db.bouteilles.length && ids.length) {
           console.warn("[BDD] la base répond vide alors que", ids.length, "bouteilles synchronisées sont connues — aucune suppression locale");
           this.d1Write("-d1ids", ids);
+          this.d1Journal("garde-vide", ids.length);
           this.save();
           this.askConfirm(
             "La BDD est vide — tout renvoyer ?",
