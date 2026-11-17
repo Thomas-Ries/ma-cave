@@ -125,6 +125,22 @@ export async function chercheVille(nom) {
   } catch { return null; }
 }
 
+/* Ville approximative par adresse IP — SANS permission de localisation.
+   Filet de secours pour le GPS bloqué/refusé (PWA iOS notamment). */
+export async function villeParIp() {
+  for (const u of ["https://ipapi.co/json/", "https://ipwho.is/"]) {
+    try {
+      const res = await fetch(u);
+      if (!res.ok) continue;
+      const j = await res.json();
+      const lat = j.latitude ?? j.lat, lon = j.longitude ?? j.lon;
+      const ville = j.city || null;
+      if (lat != null && lon != null && ville) return { lat, lon, ville, source: "réseau" };
+    } catch {}
+  }
+  return null;
+}
+
 /* Ville détectée depuis la position (Nominatim/OpenStreetMap, gratuit) */
 export async function villeDepuis(lat, lon) {
   try {
