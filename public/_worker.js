@@ -301,6 +301,7 @@ async function hkdf(ikm, salt, info, len) {
 
 
 
+
 /* Chiffre la charge puis signe le VAPID — renvoie la Response du service push. */
 async function webpush(env, sub, payload) {
   if (!env.VAPID_JWK) throw new Error("Variable VAPID_JWK absente (Settings > Functions > Environment variables)");
@@ -399,7 +400,10 @@ async function pushCron(env) {
   for (const s of subs) {
     const d = s.digest || {};
     const boire = d.boire || 0, passe = d.passe || 0;
-    const cle = JSON.stringify([boire, passe, d.bientot || 0, d.top || []]);
+    /* clé de changement : LES COMPTEURS seulement (boire/passe). Les noms (top)
+       ne doivent pas déclencher de renotification — ils illustrent le message,
+       l'ordre de la base bouge sans cesse côté app. */
+    const cle = JSON.stringify([boire, passe]);
     const jours = s.envoye ? (Date.now() - Date.parse(s.envoye)) / 86400000 : Infinity;
     if (boire + passe > 0 && (s.cle !== cle || jours >= 6)) {
       let corps = boire + " bouteille" + (boire > 1 ? "s" : "") + " dans sa fenêtre d'apogée";
@@ -595,6 +599,7 @@ const PUB_CSS = `
   .note-val small { font-size:7.5px; letter-spacing:.2em; text-transform:uppercase; }
   .note-val b { font-size:19px; font-weight:normal; line-height:1; }
   dl { margin-top:18px; font-size:14px; }
+
   dl > div { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid var(--hairline); }
   dl > div:last-child { border-bottom:0; }
   dt { color:var(--muted); } dd { text-align:right; }
@@ -895,6 +900,7 @@ export default {
     if (url.pathname === "/api/bues") {
       if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", BUES_TITLE, BUES_PROP);
       if (request.method === "POST") return metaPost(request, env, BUES_TITLE, BUES_PROP, s => { try { const j = JSON.parse(s); return Array.isArray(j) || (j && Array.isArray(j.bues)); } catch { return false; } });
+
       return json({ ok: false, error: "Méthode non autorisée" }, 405);
     }
 
