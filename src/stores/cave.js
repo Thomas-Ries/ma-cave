@@ -301,6 +301,7 @@ export const useCave = defineStore("cave", {
 
 
 
+
         body.style.top = (-this._scrollY) + "px";
       } else if (!locked && body.classList.contains("no-scroll")) {
         body.classList.remove("no-scroll");
@@ -597,6 +598,7 @@ export const useCave = defineStore("cave", {
       _notionChain = p;
       return p;
     },
+
 
     /* Traduction des échecs de synchro en phrase humaine (pas de jargon dev) */
 
@@ -899,6 +901,7 @@ export const useCave = defineStore("cave", {
       } catch (e) { this.toast("Envies non envoyées : " + this.raisonSync(null, null)); return false; }
     },
 
+
     /* ---------- Import ---------- */
 
     async parseImport(file) { return parseImportFile(file); },
@@ -1198,6 +1201,7 @@ export const useCave = defineStore("cave", {
       /* En-têtes = colonnes reconnues par l'import → la sauvegarde est réimportable tel quel */
       const esc = v => { if (v == null || v === "") return ""; const s = String(v); return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
       const cols = ["nom", "type", "categorie", "region", "cepage", "appellation", "millesime", "apoDebut", "apoFin", "quantite", "prix", "cave", "cuvee", "format", "statut", "commentaire", "pays"];
+
       return [cols.join(";"), ...this.db.bouteilles.map(b => cols.map(c => esc(b[c])).join(";"))].join("\r\n");
     },
     downloadBackup(manuel) {
@@ -1284,6 +1288,7 @@ export const useCave = defineStore("cave", {
         if (this.statutApo(b, year) === "boire" && top.length < 3) top.push([b.nom, b.millesime].filter(Boolean).join(" "));
         if (top.length >= 3) break;
       }
+      top.sort(); /* noms triés : le résumé ne change PAS quand la synchro réordonne la base (sinon le cron renotifie pour rien) */
       return { boire: st.boire, passe: st.passe, bientot: st.bientot, top };
     },
     async pushInit() {
