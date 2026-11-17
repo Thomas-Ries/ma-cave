@@ -21,6 +21,10 @@ export const REGIONS = {
   portugal: { nom: "Portugal", mots: ["portugal", "douro", "porto", "vinho verde", "madeira"] },
   espagne: { nom: "Espagne", mots: ["espagne", "spain", "rioja", "ribera", "priorat", "rias baixas", "jerez", "navarre"] },
   allemagne: { nom: "Allemagne", mots: ["allemagne", "germany", "moselle", "mosel", "rheingau", "rheinhessen", "nahe", "pfalz", "franken"] },
+  jura: { nom: "Jura", mots: ["jura", "arbois", "chateau-chalon", "l'etoile", "cotes du jura"] },
+  "afrique-du-sud": { nom: "Afrique du Sud", mots: ["afrique du sud", "south africa", "stellenbosch", "paarl", "swartland", "walker bay", "hemel-en-arde", "constancia", "franschhoek"] },
+  argentine: { nom: "Argentine", mots: ["argentine", "argentina", "mendoza", "salta", "cafayate", "patagonie", "patagonia", "san juan", "lujan de cuyo"] },
+  chili: { nom: "Chili", mots: ["chili", "chile", "colchagua", "maipo", "casablanca", "rapel", "aconcagua", "limari", "maule"] },
 };
 
 /* Chargeurs paresseux : chaque région = 1 à 4 fragments assemblés en un data URL. */
@@ -37,6 +41,10 @@ const CHARGEURS = {
   portugal: () => Promise.all([import("./regions/portugal.1.js"), import("./regions/portugal.2.js")]),
   espagne: () => Promise.all([import("./regions/espagne.1.js"), import("./regions/espagne.2.js")]),
   allemagne: () => Promise.all([import("./regions/allemagne.1.js"), import("./regions/allemagne.2.js")]),
+  jura: () => Promise.all([import("./regions/jura.1.js"), import("./regions/jura.2.js"), import("./regions/jura.3.js"), import("./regions/jura.4.js"), import("./regions/jura.5.js"), import("./regions/jura.6.js")]),
+  "afrique-du-sud": () => Promise.all([import("./regions/afrique-du-sud.1.js"), import("./regions/afrique-du-sud.2.js"), import("./regions/afrique-du-sud.3.js"), import("./regions/afrique-du-sud.4.js")]),
+  argentine: () => Promise.all([import("./regions/argentine.1.js"), import("./regions/argentine.2.js"), import("./regions/argentine.3.js")]),
+  chili: () => Promise.all([import("./regions/chili.1.js"), import("./regions/chili.2.js"), import("./regions/chili.3.js"), import("./regions/chili.4.js"), import("./regions/chili.5.js"), import("./regions/chili.6.js")]),
 };
 
 const cache = {};
@@ -47,13 +55,18 @@ export function normR(t) { return (t || "").normalize("NFD").replace(/[\u0300-\u
 export function regionSlug(b) {
   if (!b) return null;
   const t = normR([b.region, b.appellation, b.nom].filter(Boolean).join(" "));
-  for (const [slug, r] of Object.entries(REGIONS)) if (r.mots.some(m => t.includes(m))) return slug;
+  /* Frontières de mots : "jura" ne doit pas matcher "jurançon", "loire" pas "loiret"... */
+  const ech = (m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const [slug, r] of Object.entries(REGIONS)) if (r.mots.some(m => new RegExp("(^|[^a-z0-9])" + ech(m) + "($|[^a-z0-9])").test(t))) return slug;
   const p = normR(b.pays || "");
   if (p) {
     if (p.includes("ital")) return "italie";
     if (p.includes("espagne") || p.includes("spain")) return "espagne";
     if (p.includes("portugal")) return "portugal";
     if (p.includes("allemagne") || p.includes("germany")) return "allemagne";
+    if (p.includes("afrique du sud") || p.includes("south africa")) return "afrique-du-sud";
+    if (p.includes("argentine") || p.includes("argentina")) return "argentine";
+    if (p.includes("chili") || p.includes("chile")) return "chili";
   }
   return null;
 }
