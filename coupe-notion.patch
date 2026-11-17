@@ -1,0 +1,1444 @@
+--- a/public/_worker.js
++++ b/public/_worker.js
+@@ -1,27 +1,18 @@
+ /* Ma Cave v2 (Vue) — Pages Function en mode avancé (_worker.js)
+  * Fichier unique à la racine du dossier dist : reconnu par le glisser-déposer Cloudflare (Direct Upload).
+- * Token NOTION_TOKEN + NOTION_DATABASE_ID_CAVE côté serveur (jamais dans le front).
++ * Jeton d'appairage MA_CAVE_TOKEN côté serveur (jamais dans le front).
+  *
+  * Routes :
+- *   POST /api/sync-notion  actions : "add", "drink", "sync" (upsert massif), "pull", "move", "delete"
+- *   GET  /api/sync-notion  idem "pull" (pratique pour tester dans le navigateur)
+- *   GET  /api/avatar       ?profil=X → avatar du profil (base64 + date d'édition)
+- *   POST /api/avatar       { profil, data } — data: null = suppression
+- *   GET  /api/listes       ?profil=X → listes d'envie du profil (JSON + date d'édition)
+- *   GET/POST /api/envies  — envies d'achat (panier), stockage partagé tous profils
+- *   POST /api/listes       { profil, data } — JSON des listes, data: null = tout effacer
++ *   GET/POST /api/db/*      — BDD D1 : bouteilles, docs (bues, listes, envies, avatar, prefs), photos KV
++ *   POST     /api/push-sub  — abonnements push (D1, jeton requis)
++ *   POST     /api/push-cron — envoi du rappel d'apogées (secret cron) [appelé par le worker cron]
++ *   POST     /api/push-test — notif de test immédiate (secret cron) [diagnostic]
++ *   GET      /api/actu      — une actu wine (RSS, sans clé)
++ *   /partage, /apropos      — pages publiques
+  *   tout le reste → fichiers statiques (env.ASSETS)
+  *
+- * Méta-pages Notion (exclues du traitement des bouteilles) :
+- *   « Profil (avatar) »  — propriété texte « Avatar (base64) », chunks de 1900 caractères
+- *   « Listes d'envie »   — propriété texte « Listes (JSON) », chunks de 1900 caractères
+- * Résolution multi-appareils : le plus récent gagne (last_edited_time vs horodatage local).
++ * Depuis la v2.22.0, plus AUCUNE dépendance Notion : tout vit dans D1 + KV.
+  */
+-
+-const API = "https://api.notion.com/v1";
+-const VERSION = "2022-06-28";
+-
+-/* Entités HTML des flux RSS : « l&#039; » → « l' », &amp; → &… */
+ function decodeEntities(t) {
+   const NOMS = { amp: "&", quot: "\u0022", apos: "'", lt: "<", gt: ">", nbsp: " ", eacute: "\u00e9", egrave: "\u00e8", ecirc: "\u00ea", agrave: "\u00e0", acirc: "\u00e2", icirc: "\u00ee", ocirc: "\u00f4", ucirc: "\u00fb", ugrave: "\u00f9", ccedil: "\u00e7", euml: "\u00eb" };
+   return t
+@@ -35,247 +26,6 @@
+   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+ }
+ 
+-function headers(token) {
+-  return { "Authorization": `Bearer ${token}`, "Notion-Version": VERSION, "Content-Type": "application/json" };
+-}
+-
+-function toNotionProperties(b) {
+-  const props = {
+-    "Nom": { title: [{ text: { content: b.nom || "Bouteille sans nom" } }] },
+-    "Type": { select: { name: b.type || "Vin" } },
+-    "Catégorie": { select: { name: b.categorie || "Rouge" } },
+-    "Cave": { select: { name: b.cave || "Cave principale" } },
+-    "Statut": { select: { name: b.statut || (b.quantite > 0 ? "En cave" : "Bue") } },
+-    "Quantité": { number: b.quantite ?? null },
+-    "Millésime": { number: b.millesime ?? null },
+-    "Prix": { number: b.prix ?? null },
+-    "Note": { number: b.note ?? null },
+-    "Cépage": { rich_text: [{ text: { content: b.cepage || "" } }] },
+-    "Appellation": { rich_text: [{ text: { content: b.appellation || "" } }] },
+-    "Cuvée": { rich_text: [{ text: { content: b.cuvee || "" } }] },
+-    "Spécificité": { rich_text: [{ text: { content: b.specificite || "" } }] },
+-    "Format": { select: { name: b.format || "Bouteille (75 cl)" } },
+-    "Commentaire": { rich_text: [{ text: { content: b.commentaire || "" } }] },
+-  };
+-  /* Un select avec un nom VIDE est refusé par Notion (validation_error 400, renvoyé
+-     en 502) : Région et Pays ne partent que s'ils sont renseignés. */
+-  if (b.region && String(b.region).trim()) props["Région"] = { select: { name: b.region } };
+-  if (b.pays && String(b.pays).trim()) props["Pays"] = { select: { name: b.pays } };
+-  return props;
+-}
+-
+-function toNotionPage(dbId, b) {
+-  return { parent: { database_id: dbId }, properties: toNotionProperties(b) };
+-}
+-
+-function fromNotionPage(p) {
+-  const props = p.properties || {};
+-  const sel = (n) => props[n]?.select?.name || null;
+-  const num = (n) => (props[n]?.number ?? null);
+-  const rt = (n) => (props[n]?.rich_text || []).map(t => t.plain_text || "").join("");
+-  const title = (n) => (props[n]?.title || []).map(t => t.plain_text || "").join("");
+-  return {
+-    nom: title("Nom") || "",
+-    type: sel("Type") || "Vin",
+-    categorie: sel("Catégorie") || "Rouge",
+-    cave: sel("Cave") || "Cave principale",
+-    region: sel("Région") || "",
+-    pays: sel("Pays") || "",
+-    statut: sel("Statut") || "En cave",
+-    quantite: num("Quantité"),
+-    millesime: num("Millésime"),
+-    prix: num("Prix"),
+-    note: num("Note"),
+-    cepage: rt("Cépage"),
+-    appellation: rt("Appellation"),
+-    cuvee: rt("Cuvée"),
+-    specificite: rt("Spécificité"),
+-    format: sel("Format") || "Bouteille (75 cl)",
+-    commentaire: rt("Commentaire"),
+-    lastEdited: p.last_edited_time || "",
+-  };
+-}
+-
+-function normTxt(s) {
+-  return String(s || "").toLowerCase()
+-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+-    .replace(/\s+/g, " ").trim();
+-}
+-
+-function normMil(m) {
+-  if (m == null || m === "") return "";
+-  const n = Number(m);
+-  return Number.isFinite(n) ? String(n) : String(m).trim();
+-}
+-
+-/* Clé alignée sur importKey de l'app : nom + cuvée + millésime + cave.
+-   « Cave principale » et « Principale » = même cave ; la cuvée distingue
+-   les cuvées différentes d'un même domaine/millésime. */
+-function pageKey(nom, millesime, cave, cuvee) {
+-  let c = normTxt(cave);
+-  if (c === "cave principale") c = "principale";
+-  return [normTxt(nom), normTxt(cuvee), normMil(millesime), c].join(" | ");
+-}
+-
+-/* Toutes les pages de la base, pagination incluse */
+-async function notionCode(res) {
+-  try { const j = await res.clone().json(); return j.code || j.message || null; } catch { return null; }
+-}
+-
+-async function queryAll(token, dbId) {
+-  const out = [];
+-  let cursor = undefined;
+-  do {
+-    const res = await fetch(`${API}/databases/${dbId}/query`, {
+-      method: "POST",
+-      headers: headers(token),
+-      body: JSON.stringify({ page_size: 100, ...(cursor ? { start_cursor: cursor } : {}) }),
+-    });
+-    if (!res.ok && res.status === 429) {
+-      /* Limite de débit : Notion demande de patienter — on réessaie une fois */
+-      await new Promise(r => setTimeout(r, Math.min(+(res.headers.get("retry-after") || 1) * 1000, 5000)));
+-      continue;
+-    }
+-    if (!res.ok) throw new Error(`Notion query ${res.status} ${(await notionCode(res)) || ""}`.trim());
+-    const j = await res.json();
+-    out.push(...(j.results || []));
+-    cursor = j.has_more ? j.next_cursor : undefined;
+-  } while (cursor);
+-  return out;
+-}
+-
+-/* Profils (v27) : chaque profil a sa base Notion — Thomas NOTION_DATABASE_ID_CAVE,
+- * Marc Joseph NOTION_DATABASE_ID_CAVE_MARC (à ajouter dans les variables Cloudflare). */
+-function dbIdFor(env, profil) {
+-  return profil === "marc" ? (env.NOTION_DATABASE_ID_CAVE_MARC || env.NOTION_DATABASE_ID_CAVE) : env.NOTION_DATABASE_ID_CAVE;
+-}
+-
+-/* ---------- Méta-pages (avatar, listes) — stockage clé/valeur dans la base ----------
+- * Contenu textuel découpé en morceaux de 1900 caractères (l'API Notion limite un bloc à 2000).
+- * Ces pages sont exclues partout du traitement des bouteilles (pull, upsert, drink, delete). */
+-const AVATAR_TITLE = "Profil (avatar)";
+-const AVATAR_PROP = "Avatar (base64)";
+-const LISTES_TITLE = "Listes d'envie";
+-const LISTES_PROP = "Listes (JSON)";
+-const ENVIES_TITLE = "Envies d'achat";
+-const ENVIES_PROP = "Envies (JSON)";
+-const PREFS_TITLE = "Préférences soir";
+-const PREFS_PROP = "Prefs soir (JSON)";
+-const BUES_TITLE = "Bues (historique)";
+-const BUES_PROP = "Bues (JSON)";
+-
+-function isMetaPage(p) {
+-  const t = ((p.properties?.Nom?.title) || []).map(x => x.plain_text || "").join("");
+-  return t === AVATAR_TITLE || t === LISTES_TITLE || t === ENVIES_TITLE || t === PREFS_TITLE || t === BUES_TITLE;
+-}
+-
+-function toChunks(s, n = 1900) {
+-  const out = [];
+-  for (let i = 0; i < (s || "").length; i += n) out.push({ text: { content: s.slice(i, i + n) } });
+-  return out;
+-}
+-
+-async function ensureProp(token, dbId, propName) {
+-  const res = await fetch(`${API}/databases/${dbId}`, {
+-    method: "PATCH",
+-    headers: headers(token),
+-    body: JSON.stringify({ properties: { [propName]: { rich_text: {} } } }),
+-  });
+-  if (!res.ok) throw new Error(`Notion schema ${res.status}`);
+-}
+-
+-const ensuredProps = new Set();   /* schéma déjà assuré : dbId·prop */
+-const metaPageIds = new Map();     /* id de page méta : dbId·title → { id, ts } (TTL 10 min) */
+-
+-async function findMetaPage(token, dbId, title) {
+-  const pages = await queryAll(token, dbId);
+-  return pages.find(p => {
+-    const t = ((p.properties?.Nom?.title) || []).map(x => x.plain_text || "").join("");
+-    return t === title;
+-  }) || null;
+-}
+-
+-async function metaGet(env, profil, title, propName) {
+-  const token = env.NOTION_TOKEN;
+-  const dbId = dbIdFor(env, profil);
+-  if (!token || !dbId) return json({ ok: false, error: "Function non configurée" }, 500);
+-  const ck = dbId + "·" + title;
+-  try {
+-    let page = null;
+-    const cached = metaPageIds.get(ck);
+-    if (cached) {
+-      const res = await fetch(`${API}/pages/${cached.id}`, { headers: headers(token) });
+-      if (res.ok) page = await res.json();
+-      else if (res.status === 404 || res.status === 410) metaPageIds.delete(ck); /* page supprimée → on rescane */
+-    }
+-    if (!page) {
+-      page = await findMetaPage(token, dbId, title);
+-      if (page) metaPageIds.set(ck, { id: page.id, ts: Date.now() });
+-    }
+-    if (!page) return json({ ok: true, data: null, edited: null });
+-    const data = (page.properties?.[propName]?.rich_text || []).map(t => t.plain_text || "").join("");
+-    return json({ ok: true, data: data || null, edited: page.last_edited_time || null });
+-  } catch (e) {
+-    return json({ ok: false, error: String(e.message || e) }, 500);
+-  }
+-}
+-
+-async function metaPost(request, env, title, propName, validate, profilForce) {
+-  let body = {};
+-  try { body = await request.json(); } catch {}
+-  const profil = profilForce || body.profil || "thomas";
+-  const token = env.NOTION_TOKEN;
+-  const dbId = dbIdFor(env, profil);
+-  if (!token || !dbId) return json({ ok: false, error: "Function non configurée" }, 500);
+-  let data = body.data;
+-  if (data != null) {
+-    if (typeof data !== "string" || !validate(data)) return json({ ok: false, error: "Format invalide" }, 400);
+-    if (data.length > 180000) return json({ ok: false, error: "Charge trop volumineuse" }, 413);
+-  }
+-  const ck = dbId + "·" + title;
+-  try {
+-    const ek = dbId + "·" + propName;
+-    if (!ensuredProps.has(ek)) {
+-      await ensureProp(token, dbId, propName);
+-      ensuredProps.add(ek);
+-    }
+-    const props = {
+-      "Nom": { title: [{ text: { content: title } }] },
+-      [propName]: { rich_text: data ? toChunks(data) : [] },
+-    };
+-    const envoi = (method, url, body) => fetch(url, { method, headers: headers(token), body: JSON.stringify(body) });
+-    let res = null;
+-    const cached = metaPageIds.get(ck);
+-    if (cached) {
+-      res = await envoi("PATCH", `${API}/pages/${cached.id}`, { properties: props });
+-      if (res.status === 404 || res.status === 410) { metaPageIds.delete(ck); res = null; }
+-    }
+-    if (!res || !cached) {
+-      const page = await findMetaPage(token, dbId, title);
+-      if (page) { metaPageIds.set(ck, { id: page.id, ts: Date.now() }); res = await envoi("PATCH", `${API}/pages/${page.id}`, { properties: props }); }
+-      else res = await envoi("POST", `${API}/pages`, { parent: { database_id: dbId }, properties: props });
+-    }
+-    if (res.status === 429) {
+-      await new Promise(r => setTimeout(r, Math.min(+(res.headers.get("retry-after") || 1) * 1000, 5000)));
+-      const id = metaPageIds.get(ck);
+-      res = id ? await envoi("PATCH", `${API}/pages/${id.id}`, { properties: props }) : res;
+-    }
+-    if (!res.ok) return json({ ok: false, error: `Notion ${res.status} ${(await notionCode(res)) || ""}`.trim() }, res.status === 429 ? 429 : 502);
+-    const j = await res.json();
+-    metaPageIds.set(ck, { id: j.id, ts: Date.now() });
+-    return json({ ok: true, edited: j.last_edited_time || null });
+-  } catch (e) {
+-    return json({ ok: false, error: String(e.message || e) }, 500);
+-  }
+-}
+-
+-/* ---------- PUSH en arrière-plan (v2.21 : stockage D1, table push_subs) ----------
+- * Web Push standard implémenté à la main en WebCrypto (le _worker.js reste un
+- * fichier unique sans npm) : chiffrement aes128gcm (RFC 8291) + VAPID ES256 (RFC 8292).
+- * Les abonnements vivent dans la table D1 « push_subs » (même base que les
+- * bouteilles) ; l'app l'actualise à chaque synchro BDD (action "digest").
+- * Le cron Cloudflare (cron/ma-cave-push-cron.js) appelle POST /api/push-cron
+- * chaque soir avec le secret PUSH_CRON_SECRET. */
+ function b64url(s) { return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, ""); }
+ function bytesB64url(u8) { let s = ""; for (const b of u8) s += String.fromCharCode(b); return b64url(s); }
+ function b64urlBytes(str) {
+@@ -452,143 +202,6 @@
+ 
+ /* ---------- Listes d'envie (v2.5) ----------
+  * data = JSON.stringify(db.listes) : [{ id, nom, ids, date, … }] — petites charges, chunks largement suffisants. */
+-function listesValides(s) {
+-  try { const a = JSON.parse(s); return Array.isArray(a); } catch { return false; }
+-}
+-
+-async function pullAllPages(env, profil) {
+-  const token = env.NOTION_TOKEN;
+-  const dbId = dbIdFor(env, profil);
+-  if (!token || !dbId) return json({ ok: false, error: "Function non configurée (NOTION_TOKEN / NOTION_DATABASE_ID_CAVE" + (profil === "marc" ? "_MARC" : "") + ")" }, 500);
+-  try {
+-    const pages = await queryAll(token, dbId);
+-    return json({ ok: true, bouteilles: pages.filter(p => !isMetaPage(p)).map(fromNotionPage) });
+-  } catch (e) {
+-    return json({ ok: false, error: String(e.message || e) }, 500);
+-  }
+-}
+-
+-async function syncUpsert(env, bouteilles, profil) {
+-  const token = env.NOTION_TOKEN;
+-  const dbId = dbIdFor(env, profil);
+-  if (!token || !dbId) return json({ ok: false, error: "Function non configurée (NOTION_TOKEN / NOTION_DATABASE_ID_CAVE)" }, 500);
+-  try {
+-    const pages = await queryAll(token, dbId);
+-    /* Synchro INCREMENTALE : la page Notion connaît sa date de dernière édition
+-       (last_edited_time) et l'app envoie modifLe à chaque modification locale.
+-       Si la page Notion est déjà au moins aussi récente que la bouteille, on ne
+-       fait AUCUN appel — une synchro sans changement ne coûte quasi rien à Notion
+-       (avant : 400+ PATCH à chaque fois → subrequests + limite de débit → 500). */
+-    const index = new Map(pages.filter(p => !isMetaPage(p)).map(p => { const b = fromNotionPage(p); return [pageKey(b.nom, b.millesime, b.cave, b.cuvee), { id: p.id, edited: p.last_edited_time || "" }]; }));
+-    let created = 0, updated = 0, failed = 0, skipped = 0, failedDetail = null;
+-    for (const b of (bouteilles || [])) {
+-      if (!b || !b.nom) continue;
+-      const key = pageKey(b.nom, b.millesime, b.cave, b.cuvee);
+-      const pid = index.get(key);
+-      if (pid && (!b.modifLe || (pid.edited && b.modifLe <= pid.edited))) { skipped++; continue; }
+-      const envoi = async (url, method, body) => {
+-        let res = await fetch(url, { method, headers: headers(token), body: JSON.stringify(body) });
+-        for (let i = 0; i < 2 && res.status === 429; i++) {
+-          await new Promise(r => setTimeout(r, Math.min(+(res.headers.get("retry-after") || 1) * 1000, 4000)));
+-          res = await fetch(url, { method, headers: headers(token), body: JSON.stringify(body) });
+-        }
+-        return res;
+-      };
+-      let res;
+-      if (pid) res = await envoi(`${API}/pages/${pid.id}`, "PATCH", { properties: toNotionProperties(b) });
+-      else {
+-        res = await envoi(`${API}/pages`, "POST", toNotionPage(dbId, b));
+-        if (res.ok) {
+-          const j = await res.json();
+-          index.set(key, { id: j.id, edited: "" });
+-        }
+-      }
+-      if (res.ok) pid ? updated++ : created++;
+-      else { failed++; if (!failedDetail) failedDetail = `Notion ${res.status} ${(await notionCode(res)) || ""}`.trim() + " — " + (b.nom || "?"); }
+-    }
+-    return json({ ok: true, created, updated, skipped, failed, failedDetail });
+-  } catch (e) {
+-    return json({ ok: false, error: String(e.message || e) }, 500);
+-  }
+-}
+-
+-async function handleSyncPost(request, env) {
+-  let body = {};
+-  try { body = await request.json(); } catch {}
+-  const action = body.action || "add";
+-  const token = env.NOTION_TOKEN;
+-  const profil = body.profil || "thomas";
+-  const dbId = dbIdFor(env, profil);
+-
+-  if (action === "pull") return pullAllPages(env, profil);
+-  if (action === "sync") return syncUpsert(env, body.bouteilles, profil);
+-
+-  if (!token || !dbId) return json({ ok: false, error: "Function non configurée" }, 500);
+-
+-  if (action === "add" && body.bouteille) {
+-    try {
+-      const res = await fetch(`${API}/pages`, { method: "POST", headers: headers(token), body: JSON.stringify(toNotionPage(dbId, body.bouteille)) });
+-      if (!res.ok) return json({ ok: false, error: `Notion ${res.status}` }, 502);
+-      return json({ ok: true });
+-    } catch (e) {
+-      return json({ ok: false, error: String(e.message || e) }, 500);
+-    }
+-  }
+-
+-  if (action === "drink" && body.bouteille) {
+-    /* Décrément : on met à jour la page correspondante si elle existe (les quantités sont aussi réappliquées par "sync") */
+-    try {
+-      const pages = (await queryAll(token, dbId)).filter(p => !isMetaPage(p));
+-      const b = body.bouteille;
+-      const pid = (pages.map(p => ({ p, b2: fromNotionPage(p) })).find(({ b2 }) => pageKey(b2.nom, b2.millesime, b2.cave, b2.cuvee) === pageKey(b.nom, b.millesime, b.cave, b.cuvee)) || {}).p;
+-      if (pid) {
+-        const res = await fetch(`${API}/pages/${pid.id}`, { method: "PATCH", headers: headers(token), body: JSON.stringify({ properties: toNotionProperties(b) }) });
+-        if (!res.ok) return json({ ok: false, error: `Notion ${res.status}` }, 502);
+-      }
+-      return json({ ok: true });
+-    } catch (e) {
+-      return json({ ok: false, error: String(e.message || e) }, 500);
+-    }
+-  }
+-
+-  /* Déplacement de cave (ex. « Ce soir » → mise au frigo) : la page Notion est
+-     retrouvée avec l'ANCIENNE cave (la clé change quand la cave change), puis
+-     mise à jour avec les nouvelles propriétés. */
+-  if (action === "move" && body.bouteille) {
+-    try {
+-      const pages = (await queryAll(token, dbId)).filter(p => !isMetaPage(p));
+-      const b = body.bouteille;
+-      const oldKey = pageKey(b.nom, b.millesime, body.ancienneCave, b.cuvee);
+-      const pid = (pages.map(p => ({ p, b2: fromNotionPage(p) })).find(({ b2 }) => pageKey(b2.nom, b2.millesime, b2.cave, b2.cuvee) === oldKey) || {}).p;
+-      if (pid) {
+-        const res = await fetch(`${API}/pages/${pid.id}`, { method: "PATCH", headers: headers(token), body: JSON.stringify({ properties: toNotionProperties(b) }) });
+-        if (!res.ok) return json({ ok: false, error: `Notion ${res.status}` }, 502);
+-      }
+-      return json({ ok: true });
+-    } catch (e) {
+-      return json({ ok: false, error: String(e.message || e) }, 500);
+-    }
+-  }
+-
+-  if (action === "delete" && body.bouteille) {
+-    /* Suppression côté app → la page Notion correspondante est archivée (poubelle), pas effacée définitivement */
+-    try {
+-      const pages = (await queryAll(token, dbId)).filter(p => !isMetaPage(p));
+-      const b = body.bouteille;
+-      const pid = (pages.map(p => ({ p, b2: fromNotionPage(p) })).find(({ b2 }) => pageKey(b2.nom, b2.millesime, b2.cave, b2.cuvee) === pageKey(b.nom, b.millesime, b.cave, b.cuvee)) || {}).p;
+-      if (pid) {
+-        const res = await fetch(`${API}/pages/${pid.id}`, { method: "PATCH", headers: headers(token), body: JSON.stringify({ archived: true }) });
+-        if (!res.ok) return json({ ok: false, error: `Notion ${res.status}` }, 502);
+-      }
+-      return json({ ok: true });
+-    } catch (e) {
+-      return json({ ok: false, error: String(e.message || e) }, 500);
+-    }
+-  }
+-
+-  return json({ ok: false, error: "Action inconnue" }, 400);
+-}
+-
+ /* ================= Pages publiques : /partage et /apropos =================
+  * Servies directement par le worker : jamais de SPA-fallback vers l'app,
+  * jamais d'écran de code — un visiteur ne voit QUE ces deux pages.
+@@ -814,57 +427,6 @@
+   return json({ ok: true, profil, bouteilles, docs, maj: new Date().toISOString() });
+ }
+ 
+-/* Migration Notion -> D1 : lit la base Notion du profil (bouteilles + pages méta)
+-   et écrit tout dans D1. Les lignes D1 plus récentes ne sont pas écrasées. */
+-async function dbMigrateNotion(env, profil) {
+-  const db = await d1(env);
+-  const token = env.NOTION_TOKEN;
+-  const dbId = dbIdFor(env, profil);
+-  if (!token || !dbId) return json({ ok: false, error: "Variables Notion absentes" }, 500);
+-  const pages = (await queryAll(token, dbId)).filter(p => !isMetaPage(p));
+-  const stmts = [];
+-  for (const p of pages) {
+-    const b = fromNotionPage(p);
+-    if (!b || !b.nom) continue;
+-    /* les pages Notion n'ont pas l'uid de l'app : l'ID de PAGE sert de clé stable
+-       (un re-import ne crée donc JAMAIS de doublon), et lastEdited devient modifLe */
+-    b.id = b.id || p.id;
+-    b.modifLe = b.modifLe || b.lastEdited || new Date().toISOString();
+-    stmts.push(db.prepare(
+-      "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+-      "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+-      "WHERE excluded.maj_le >= bouteilles.maj_le"
+-    ).bind(b.id, profil, b.modifLe, JSON.stringify(b)));
+-  }
+-  /* Pages méta : avatar, listes, envies, bues, préférences soir -> docs */
+-  const metas = [
+-    ["avatar", AVATAR_TITLE, AVATAR_PROP],
+-    ["prefs-soir", PREFS_TITLE, PREFS_PROP],
+-    ["bues", BUES_TITLE, BUES_PROP],
+-    ["listes", LISTES_TITLE, LISTES_PROP],
+-    ["envies", ENVIES_TITLE, ENVIES_PROP]
+-  ];
+-  let docs = 0;
+-  for (const [k, title, prop] of metas) {
+-    /* metaGet renvoie une Response JSON : on la lit */
+-    const rr = await metaGet(env, k === "listes" || k === "envies" ? "thomas" : profil, title, prop);
+-    let j = null;
+-    try { j = await rr.json(); } catch {}
+-    if (!j || !j.ok || !j.data) continue;
+-    let data = j.data;
+-    if (k === "bues" && data && !Array.isArray(data) && Array.isArray(data.bues)) data = data.bues;
+-    stmts.push(db.prepare(
+-      "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+-      "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+-      "WHERE excluded.maj_le >= docs.maj_le"
+-    ).bind(k, k === "listes" || k === "envies" ? "thomas" : profil, j.edited || new Date().toISOString(), JSON.stringify(data)));
+-    docs++;
+-  }
+-  /* D1 refuse les gros batchs : on découpe par lots de 50 requêtes */
+-  for (let i = 0; i < stmts.length; i += 50) await db.batch(stmts.slice(i, i + 50));
+-  return json({ ok: true, profil, bouteilles: pages.length, docs, maj: new Date().toISOString() });
+-}
+-
+ export default {
+   async fetch(request, env) {
+     const url = new URL(request.url);
+@@ -903,46 +465,6 @@
+       return json({ ok: false, error: "actu indisponible" }, 502);
+     }
+ 
+-    if (url.pathname === "/api/avatar") {
+-      if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", AVATAR_TITLE, AVATAR_PROP);
+-      if (request.method === "POST") return metaPost(request, env, AVATAR_TITLE, AVATAR_PROP, s => s.startsWith("data:image"));
+-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
+-    }
+-
+-    /* Préférences du soir (météo, position, bandeaux) : par profil, comme l'avatar */
+-    if (url.pathname === "/api/prefs-soir") {
+-      if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", PREFS_TITLE, PREFS_PROP);
+-      if (request.method === "POST") return metaPost(request, env, PREFS_TITLE, PREFS_PROP, s => { try { const j = JSON.parse(s); return !!j && typeof j === "object"; } catch { return false; } });
+-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
+-    }
+-
+-    /* Historique des bouteilles bues : par profil, comme les préférences */
+-    if (url.pathname === "/api/bues") {
+-      if (request.method === "GET") return metaGet(env, url.searchParams.get("profil") || "thomas", BUES_TITLE, BUES_PROP);
+-      if (request.method === "POST") return metaPost(request, env, BUES_TITLE, BUES_PROP, s => { try { const j = JSON.parse(s); return Array.isArray(j) || (j && Array.isArray(j.bues)); } catch { return false; } });
+-
+-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
+-    }
+-
+-    /* Listes d'envie + Envies d'achat : STOCKAGE PARTAGÉ — toutes les modifications
+-       vont sur la base principale, visibles par tous les profils (PC, iPad…). */
+-
+-    if (url.pathname === "/api/listes") {
+-      if (request.method === "GET") return metaGet(env, "thomas", LISTES_TITLE, LISTES_PROP);
+-      if (request.method === "POST") return metaPost(request, env, LISTES_TITLE, LISTES_PROP, listesValides, "thomas");
+-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
+-    }
+-
+-    if (url.pathname === "/api/envies") {
+-
+-      if (request.method === "GET") return metaGet(env, "thomas", ENVIES_TITLE, ENVIES_PROP);
+-      if (request.method === "POST") return metaPost(request, env, ENVIES_TITLE, ENVIES_PROP, listesValides, "thomas");
+-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
+-    }
+-
+-
+-
+-    /* --- Push en arrière-plan : abonnements (jeton d'appairage) + cron (secret) --- */
+     if (url.pathname === "/api/push-sub") {
+       if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
+       /* GET = diagnostic : combien d'appareils la base connaît (test curl) */
+@@ -967,7 +489,7 @@
+     }
+ 
+     /* --- BDD D1 : tout exige le jeton d'appairage (401 sinon) --- */
+-    if (url.pathname.startsWith("/api/db/") || url.pathname === "/api/migrate-notion") {
++    if (url.pathname.startsWith("/api/db/")) {
+       if (!authOk(request, env)) return json({ ok: false, error: "Jeton manquant ou invalide (MA_CAVE_TOKEN)" }, 401);
+       if (!env.DB) return json({ ok: false, error: "Binding D1 absent : Settings > Functions > D1 bindings > DB" }, 500);
+       if (request.method === "GET" && url.pathname === "/api/db/pull") return dbPull(env, url.searchParams.get("profil") || "thomas").catch(e => json({ ok: false, error: "D1 pull : " + String(e.message || e) }, 500));
+@@ -979,16 +501,9 @@
+         if (!v) return json({ ok: false, error: "photo inconnue" }, 404);
+         return new Response(v, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "private, max-age=86400" } });
+       }
+-      if (request.method === "POST" && url.pathname === "/api/migrate-notion") return dbMigrateNotion(env, url.searchParams.get("profil") || "thomas").catch(e => json({ ok: false, error: String(e.message || e) }, 500));
+       return json({ ok: false, error: "Route inconnue" }, 404);
+     }
+ 
+-    if (url.pathname === "/api/sync-notion") {
+-      if (request.method === "POST") return handleSyncPost(request, env);
+-      if (request.method === "GET") return pullAllPages(env, url.searchParams.get("profil") || "thomas");
+-      return json({ ok: false, error: "Méthode non autorisée" }, 405);
+-    }
+-
+     /* Tout le reste : servir les fichiers statiques de la Pages */
+     return env.ASSETS.fetch(request);
+   },
+--- a/src/stores/cave.js
++++ b/src/stores/cave.js
+@@ -1,4 +1,4 @@
+-/* Ma Cave — store Pinia : modèle, persistance, profils, synchro Notion (cave + avatars + listes) */
++/* Ma Cave — store Pinia : modèle, persistance, profils, synchro BDD D1 (v2.22 : Notion retiré) */
+ import { defineStore } from "pinia";
+ import { PROFILS, FORMATS, CATS, CAT_COLORS, uid } from "../config.js";
+ import { estimeApogee } from "../lib/apogee.js";
+@@ -7,8 +7,7 @@
+ import { notifie, planifieRappel, rattrapeRappels } from "../lib/notifs.js";
+ import { pushEtat, pushActiver, pushDesactiver, pushMajDigest } from "../lib/push.js";
+ 
+-/* File unique des appels Notion (voir sendNotion) */
+-let _notionChain = Promise.resolve();
++
+ 
+ const PROFIL_KEY = "ma-cave-profil";
+ const ADMIN_PIN_HASH = 3785925479; /* djb2 du code admin de secours (débloque n'importe quel profil) */
+@@ -23,7 +22,6 @@
+     cavePage: 1,
+     apoAlerte: null,        /* null | "boire" | "bientot" | "passe" (onglet Apogées) */
+     apogeeFiltre: false,    /* filtre « à boire cette année » (bandeau Cave) */
+-    derniereRaison: null, /* raison humaine du dernier échec de synchro */
+     d1PullTs: 0,           /* horodatage du dernier pull BDD réussi (pastille de synchro) */
+     d1Nb: null,            /* nb de bouteilles que la BDD renvoie (décompte Profil) */
+     d1Log: [],             /* journal des événements BDD notables (suppressions, renvois…) */
+@@ -53,8 +51,8 @@
+     CATS: () => CATS,
+     CAT_COLORS: () => CAT_COLORS,
+     pKeys() { return this.PROFIL === "thomas"
+-      ? { db: "ma-cave-v1", queue: "ma-cave-queue", pull: "ma-cave-lastpull" }
+-      : { db: "ma-cave-v1-" + this.PROFIL, queue: "ma-cave-queue-" + this.PROFIL, pull: "ma-cave-lastpull-" + this.PROFIL }; },
++      ? { db: "ma-cave-v1" }
++      : { db: "ma-cave-v1-" + this.PROFIL }; },
+     listes() { if (!Array.isArray(this.db.listes)) this.db.listes = []; return this.db.listes; },
+     listesDe: (s) => (b) => s.listes.filter(l => (l.ids || []).includes(b.id)),
+     nbReservees: (s) => s.listes.reduce((n, l) => n + (l.ids || []).length, 0),
+@@ -391,8 +389,8 @@
+       this.combien = null;
+       if (!b) return;
+       for (let i = 0; i < n; i++) this.drink(c.id, true);
+-      if (n === 1) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = this.db.bues[this.db.bues.length - 1]?.id; }
+-      else { this.toast(`${n} bouteilles sorties — santé ! Verdicts à noter dans le carnet`); this.syncNotion({ action: "sync", bouteilles: [b] }); }
++      if (n === 1) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.buesFiche = this.db.bues[this.db.bues.length - 1]?.id; }
++      else { this.toast(`${n} bouteilles sorties — santé ! Verdicts à noter dans le carnet`); }
+     },
+     drink(id, silent) {
+       const b = this.db.bouteilles.find(x => x.id === id);
+@@ -404,8 +402,7 @@
+       const e = { id: uid(), nom: b.nom, millesime: b.millesime, categorie: b.categorie, date: new Date().toISOString(), note: null, occasion: "", avec: "", commentaire: "" };
+       this.db.bues.push(e);
+       this.save();
+-      this.syncBues();
+-      if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = e.id; }
++      if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.buesFiche = e.id; }
+     },
+ 
+     /* « Ce soir » → rachat en un tap : +1 sur une référence existante. */
+@@ -416,7 +413,6 @@
+       cible.statut = cible.statut === "Bue" ? "En cave" : cible.statut;
+       cible.modifLe = new Date().toISOString();
+       this.save();
+-      this.syncNotion({ action: "sync", bouteilles: [cible] });
+       this.toast(`${cible.nom} · ×${cible.quantite}`);
+     },
+ 
+@@ -431,17 +427,14 @@
+       if (src.quantite > 1) {
+         src.quantite--; src.modifLe = now;
+         const twin = this.db.bouteilles.find(x => x.cave === "Frigo" && importKey(x) === importKey({ ...src, cave: "Frigo" }));
+-        if (twin) { twin.quantite++; twin.modifLe = now; this.syncNotion({ action: "drink", bouteille: twin }); }
++        if (twin) { twin.quantite++; twin.modifLe = now; }
+         else {
+           const nb = { ...src, id: uid(), cave: "Frigo", quantite: 1, statut: "En cave", modifLe: now };
+           this.db.bouteilles.push(nb);
+-          this.syncNotion({ action: "add", bouteille: nb });
+         }
+         this.save();
+-        this.syncNotion({ action: "drink", bouteille: src });
+       } else {
+         src.cave = "Frigo"; src.modifLe = now; this.save();
+-        this.syncNotion({ action: "move", bouteille: src, ancienneCave: "Principale" });
+       }
+       this.toast("Une bouteille au frais pour ce soir 🍷");
+     },
+@@ -501,8 +494,6 @@
+       this.save();
+       this.buesFiche = null;
+       this.toast(`${h.nom} remise en cave`);
+-      this.syncNotion({ action: "add", bouteille: b });
+-      this.syncBues();   /* pousse la liste sans l'entrée annulée + les tombstones */
+     },
+ 
+     /* Supprimer une entrée de l'historique des bues (definitif) */
+@@ -519,7 +510,6 @@
+       this.save();
+       this.buesFiche = null;
+       this.toast(`${h.nom} supprimée de l'historique`);
+-      this.syncBues();
+     },
+ 
+     /* ---------- Listes d'envie ---------- */
+@@ -528,17 +518,17 @@
+       if (!l || !b) return false;
+       l.ids = l.ids || [];
+       const i = l.ids.indexOf(b.id);
+-      if (i > -1) { l.ids.splice(i, 1); delete l.qtes[b.id]; this.save(); this.syncListes(); this.toast(`Sortie de « ${l.nom} »`); return true; }
++      if (i > -1) { l.ids.splice(i, 1); delete l.qtes[b.id]; this.save(); this.toast(`Sortie de « ${l.nom} »`); return true; }
+       const autres = this.listesDe(b).filter(x => x.id !== listeId);
+       if (b.quantite === 1 && autres.length) {
+         const autre = autres[0], dest = l;
+         this.askConfirm(`Il ne t'en reste qu'une — elle est déjà dans « ${autre.nom} ». La déplacer vers « ${dest.nom} » ?`, "Déplacer", () => {
+           autre.ids = autre.ids.filter(x => x !== b.id); delete autre.qtes[b.id];
+-          dest.ids.push(b.id); dest.qtes[b.id] = 1; this.save(); this.syncListes(); this.toast(`Déplacée vers « ${dest.nom} »`);
++          dest.ids.push(b.id); dest.qtes[b.id] = 1; this.save(); this.toast(`Déplacée vers « ${dest.nom} »`);
+         });
+         return false;
+       }
+-      l.ids.push(b.id); l.qtes[b.id] = 1; this.save(); this.syncListes(); this.toast(`Réservée dans « ${l.nom} »`); return true;
++      l.ids.push(b.id); l.qtes[b.id] = 1; this.save(); this.toast(`Réservée dans « ${l.nom} »`); return true;
+     },
+ 
+     listeDatePassee(l) { return !!(l.date && new Date(l.date + "T23:59:59") < new Date()); },
+@@ -559,173 +549,54 @@
+         n += q;
+       }
+       l.postEvent = l.date;
+-      this.save(); this.syncListes();
++      this.save();
+       this.toast(n ? `${n} bouteille${n > 1 ? "s" : ""} notée${n > 1 ? "s" : ""} bu${n > 1 ? "es" : "e"} — santé ! (retrouvables dans Bues)` : "Rien à signaler — déjà bues");
+     },
+-    listeGarde(l) { l.postEvent = l.date; this.save(); this.syncListes(); this.toast("Bouteilles gardées en cave — la liste reste de côté tant que tu veux"); },
+-
+-    /* ---------- Synchro Notion : cave (au fil de l'eau + file d'attente) ---------- */
+-    queueAdd(payload) {
+-      try {
+-        const q = JSON.parse(localStorage.getItem(this.pKeys.queue) || "[]");
+-        q.push(payload);
+-        if (q.length > 100) q.splice(0, q.length - 100);
+-        localStorage.setItem(this.pKeys.queue, JSON.stringify(q));
+-      } catch {}
+-    },
+-    queueLen() { try { return JSON.parse(localStorage.getItem(this.pKeys.queue) || "[]").length; } catch { return 0; } },
+-    markSync() { try { localStorage.setItem(this.pKeys.db + "-synclast", String(Date.now())); } catch {} },
+-    syncLastTxt() { const l = +(localStorage.getItem(this.pKeys.db + "-synclast") || 0); return l ? "il y a " + ilYA(l) : "jamais"; },
+-
+-    /* Tous les appels Notion passent ici : sérialisés et espacés pour éviter
+-       le 429 « Too many requests by a single worker » de Cloudflare,
+-       avec une relance après pause si 429 quand même. */
+-    sendNotion(payload) {
+-      const url = "/api/sync-notion";
+-      const opts = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) };
+-      const run = async () => {
+-        await new Promise(r => setTimeout(r, 300));
+-        try {
+-          let res = await fetch(url, opts);
+-          if (res.status === 429) { await new Promise(r => setTimeout(r, 2500)); res = await fetch(url, opts); }
+-          if (!res.ok) { this.derniereRaison = this.raisonSync(res, null); return false; }
+-          await res.json();
+-          this.markSync();
+-          return true;
+-        } catch (e) { this.derniereRaison = this.raisonSync(null, null); return false; }
+-      };
+-      const p = _notionChain.then(run, run);
+-      _notionChain = p;
+-      return p;
+-    },
++    listeGarde(l) { l.postEvent = l.date; this.save(); this.toast("Bouteilles gardées en cave — la liste reste de côté tant que tu veux"); },
+ 
+-
+-    /* Traduction des échecs de synchro en phrase humaine (pas de jargon dev) */
+-
+-    raisonSync(res, j) {
+-
+-      if (typeof navigator !== "undefined" && !navigator.onLine) return "tu es hors ligne — rien n’a pu partir";
+-
+-      const s = res ? res.status : 0;
+-      const err = ((j && j.error) || "") + " " + ((j && j.code) || "");
+-      /* Codes Notion réels (renvoyés par le worker) → phrases humaines exactes */
+-      if (/unauthorized|expired_token/i.test(err)) return "Notion refuse l'accès — reconnecte la connexion Ma Cave vers Notion (intégration à réautoriser)";
+-      if (/object_not_found/i.test(err)) return "la base Notion n'est plus accessible — vérifie qu'elle est toujours partagée avec l'intégration";
+-      if (s === 429 || /rate_limited|rate limit/i.test(err)) return "Notion ralentit les appels (limite de débit) — ça repart tout seul en général dans la minute";
+-      if (/conflict/i.test(err)) return "deux appareils ont modifié la même chose en même temps — réessaie";
+-      if (/token|config|non configuré/i.test(err)) return "la synchro n'est pas configurée côté serveur (variables Cloudflare)";
+-      if (s === 413 || /volumineuse|too large|charge/i.test(err)) return "les données sont trop lourdes pour être envoyées";
+-      if (s === 404 || /non déployé|Function/i.test(err)) return "le serveur de synchro n'est pas encore déployé — recharge la dernière version sur Cloudflare";
+-      if (s >= 500 || /Notion [0-9]/.test(err)) return "Notion a renvoyé une erreur (" + (err.trim() || s) + ") — copie ce message si ça persiste";
+-      if (/validation_error/i.test(err) || s === 400 || /format|invalide/i.test(err)) return "une donnée a un format que Notion refuse (champ trop long ou valeur interdite)";
+-      return "problème de connexion au serveur — réessaie plus tard";
+-    },
+-
+-    syncNotion(payload) {
+-      /* la photo (base64) reste locale : jamais envoyée à Notion ni à l'API */
+-      const strip = o => o && typeof o === "object" ? (({ photo, ...rest }) => rest)(o) : o;
+-      const clean = { ...payload, profil: this.PROFIL, bouteille: strip(payload.bouteille), bouteilles: payload.bouteilles && payload.bouteilles.map(strip) };
+-      this.sendNotion(clean).then(ok => {
+-        if (!ok) { this.queueAdd(clean); this.toast("Hors ligne — l'action partira vers Notion au retour du réseau"); }
+-      });
+-    },
+-
+-    async flushQueue() {
+-      if (!navigator.onLine) return;
+-      let q = [];
+-      try { q = JSON.parse(localStorage.getItem(this.pKeys.queue) || "[]"); } catch {}
+-      if (!q.length) return;
+-      const rest = [];
+-      let sent = 0;
+-      for (const p of q) { if (await this.sendNotion(p)) sent++; else { rest.push(p); rest.push(...q.slice(q.indexOf(p) + 1)); break; } } /* stop dès le 1er échec : ne brûle pas le quota pour rien */
+-      try { localStorage.setItem(this.pKeys.queue, JSON.stringify(rest)); } catch {}
+-      if (sent) this.toast(`${sent} action${sent > 1 ? "s" : ""} renvoyée${sent > 1 ? "s" : ""} vers Notion`);
+-      else if (rest.length) this.toast(`${rest.length} action${rest.length > 1 ? "s" : ""} toujours en attente : ${this.derniereRaison || "réessaie plus tard"}`);
+-    },
+-
+-    async syncAll() {
+-      this.syncBusy(true);
+-      const stock = this.db.bouteilles.filter(b => b.quantite > 0).map(b => { const { photo, ...rest } = b; return rest; });
+-      try {
+-        const res = await fetch("/api/sync-notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", bouteilles: stock, profil: this.PROFIL }) });
+-        const j = await res.json();
+-        if (j.ok) { this.markSync(); this.toast(`Cave sauvegardée sur Notion — ${j.created || 0} créée(s), ${j.updated || 0} mise(s) à jour${j.failed ? ", " + j.failed + " en échec" : ""}${j.failedDetail ? " (" + j.failedDetail + ")" : ""}`); this.flushQueue(); this.syncBues(); }
+-        else { this.derniereRaison = this.raisonSync(res, j); this.toast("Synchro impossible : " + this.derniereRaison); }
+-      } catch (e) { this.derniereRaison = this.raisonSync(null, null); this.toast("Synchro impossible : " + this.derniereRaison + " — ta cave reste intacte en local"); }
+-      finally { this.syncBusy(false); }
++    /* ---------- Listes d'envie ---------- */
++    toggleListe(listeId, b) {
++      const l = this.listes.find(x => x.id === listeId);
++      if (!l || !b) return false;
++      l.ids = l.ids || [];
++      const i = l.ids.indexOf(b.id);
++      if (i > -1) { l.ids.splice(i, 1); delete l.qtes[b.id]; this.save(); this.toast(`Sortie de « ${l.nom} »`); return true; }
++      const autres = this.listesDe(b).filter(x => x.id !== listeId);
++      if (b.quantite === 1 && autres.length) {
++        const autre = autres[0], dest = l;
++        this.askConfirm(`Il ne t'en reste qu'une — elle est déjà dans « ${autre.nom} ». La déplacer vers « ${dest.nom} » ?`, "Déplacer", () => {
++          autre.ids = autre.ids.filter(x => x !== b.id); delete autre.qtes[b.id];
++          dest.ids.push(b.id); dest.qtes[b.id] = 1; this.save(); this.toast(`Déplacée vers « ${dest.nom} »`);
++        });
++        return false;
++      }
++      l.ids.push(b.id); l.qtes[b.id] = 1; this.save(); this.toast(`Réservée dans « ${l.nom} »`); return true;
+     },
+ 
+-    async pullAll() {
+-      this.syncBusy(true);
+-      try {
+-        /* Le serveur peut répondre par intermittence (connexion coupée) : 2 tentatives */
+-        let res = null, j = null;
+-        for (let essai = 0; essai < 2 && !j; essai++) {
+-          try {
+-            res = await fetch("/api/sync-notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "pull", profil: this.PROFIL }) });
+-            j = await res.json();
+-          } catch (e) { this.derniereRaison = this.raisonSync(null, null); if (essai === 0) await new Promise(r => setTimeout(r, 3000)); }
+-        }
+-        if (!j) { this.toast("Récupération impossible : " + (this.derniereRaison || "coupe réseau — réessaie")); return; }
+-        if (!j.ok) { this.derniereRaison = this.raisonSync(res, j); this.toast("Récupération impossible : " + this.derniereRaison); return; }
+-        const r = this.mergePull(j.bouteilles || []);
+-        this.markSync();
+-        this.save();
+-        this.toast(`Récupéré : ${r.added} ajoutée(s), ${r.updated} mise(s) à jour, ${r.kept} conservée(s)`);
+-        this.flushQueue();
+-        await this.pullBues();   /* ATTENDRE la fusion distante AVANT de pousser : sinon le push écrase les bues de l'autre appareil */
+-        this.syncBues();
+-      } catch { this.toast("Récupération impossible : " + (this.derniereRaison || "réessaie plus tard")); }
+-      finally { this.syncBusy(false); }
++    listeDatePassee(l) { return !!(l.date && new Date(l.date + "T23:59:59") < new Date()); },
++    listePostPending(l) {
++      if (!this.listeDatePassee(l) || l.postEvent === l.date) return false;
++      return (l.ids || []).some(id => { const b = this.db.bouteilles.find(x => x.id === id); return b && b.quantite > 0; });
+     },
+-
+-    async autoPull() {
+-      if (!navigator.onLine) return "offline";
+-      const last = +(localStorage.getItem(this.pKeys.pull) || 0);
+-      if (Date.now() - last < 15 * 60 * 1000) return "fresh";
+-      localStorage.setItem(this.pKeys.pull, String(Date.now()));
+-      try {
+-        let res = null, j = null;
+-        for (let essai = 0; essai < 2 && !j; essai++) {
+-          try {
+-            res = await fetch("/api/sync-notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "pull", profil: this.PROFIL }) });
+-            j = await res.json();
+-          } catch (e) { this.derniereRaison = this.raisonSync(null, null); if (essai === 0) await new Promise(r => setTimeout(r, 3000)); }
+-        }
+-        if (!j) return "fail";
+-        if (!j.ok) { this.derniereRaison = this.raisonSync(res, j); return "fail"; }
+-        const r = this.mergePull(j.bouteilles || []);
+-        this.markSync();
+-        if (r.added || r.updated) { this.save(); this.toast(`Cave rafraîchie depuis Notion — ${r.added} ajoutée${r.added > 1 ? "s" : ""}, ${r.updated} modifiée${r.updated > 1 ? "s" : ""}`); }
+-        return "ok";
+-      } catch (e) { /* hors ligne : la cave locale reste la référence */ this.derniereRaison = this.raisonSync(null, null); return "fail"; }
++    listeResteEnCave(l) {
++      return (l.ids || []).reduce((n, id) => { const b = this.db.bouteilles.find(x => x.id === id); return n + (b && b.quantite > 0 ? Math.min(this.listeQ(l, id), b.quantite) : 0); }, 0);
+     },
+-
+-    mergePull(list) {
+-      let added = 0, updated = 0, kept = 0;
+-      for (const nb of list) {
+-        if (!nb || !nb.nom) continue;
+-        const local = this.db.bouteilles.find(b => importKey(b) === importKey(nb));
+-        if (!local) {
+-          const b = { id: uid(), nom: nb.nom, type: nb.type || "Vin", categorie: nb.categorie || "Rouge", cepage: nb.cepage || "", region: nb.region || "", pays: nb.pays || "", millesime: nb.millesime ?? null, quantite: nb.quantite ?? 1, prix: nb.prix ?? null, cave: nb.cave || "Principale", cuvee: nb.cuvee || "", appellation: nb.appellation || "", specificite: nb.specificite || "", format: nb.format || "Bouteille (75 cl)", commentaire: nb.commentaire || "", statut: nb.statut || "En cave", bues: 0, note: null, photo: null, apoDebut: null, apoFin: null, apoAuto: null, apoRegle: null, buLe: null, modifLe: nb.lastEdited || new Date().toISOString() };
+-          const est = estimeApogee(b);
+-          if (est) { b.apoAuto = est; b.apoRegle = est.regle; }
+-          this.db.bouteilles.push(b);
+-          added++;
+-        } else {
+-          const notionT = nb.lastEdited || "";
+-          const localT = local.modifLe || "";
+-          if (notionT && (!localT || notionT > localT)) {
+-            ["quantite", "prix", "categorie", "region", "pays", "cepage", "cuvee", "appellation", "format", "commentaire", "statut", "millesime", "specificite"].forEach(f => { if (nb[f] != null && nb[f] !== "") local[f] = nb[f]; });
+-            local.modifLe = notionT;
+-            updated++;
+-          } else kept++;
+-        }
++    listeBues(l) {
++      let n = 0;
++      for (const id of [...(l.ids || [])]) {
++        const b = this.db.bouteilles.find(x => x.id === id);
++        if (!b) continue;
++        const q = Math.min(this.listeQ(l, id), b.quantite);
++        for (let i = 0; i < q; i++) this.drink(id, true);
++        n += q;
+       }
+-      return { added, updated, kept };
++      l.postEvent = l.date;
++      this.save();
++      this.toast(n ? `${n} bouteille${n > 1 ? "s" : ""} notée${n > 1 ? "s" : ""} bu${n > 1 ? "es" : "e"} — santé ! (retrouvables dans Bues)` : "Rien à signaler — déjà bues");
+     },
++    listeGarde(l) { l.postEvent = l.date; this.save(); this.toast("Bouteilles gardées en cave — la liste reste de côté tant que tu veux"); },
+ 
+-    /* ---------- Avatar de profil (v2.4) : Notion, le plus récent gagne ---------- */
++    /* ---------- Avatar de profil (v2.4) : D1 docs, le plus récent gagne ---------- */
+     setAvatar(data, ts) {
+       try {
+         const k = "ma-cave-avatar-" + this.PROFIL;
+@@ -736,33 +607,10 @@
+     },
+     avatarDe(id) { try { return localStorage.getItem("ma-cave-avatar-" + id) || null; } catch { return null; } },
+     avatarTs(id) { try { return localStorage.getItem("ma-cave-avatar-" + id + "-ts") || null; } catch { return null; } },
+-    async pullAvatar() {
+-      try {
+-        const res = await fetch("/api/avatar?profil=" + this.PROFIL);
+-        const j = await res.json();
+-        if (!j.ok || !j.data) return;
+-        const local = this.avatarDe(this.PROFIL);
+-        const lts = this.avatarTs(this.PROFIL);
+-        if (local === j.data) { if (!lts && j.edited) this.setAvatar(j.data, j.edited); return; }
+-        if (!local || !lts || !j.edited || j.edited > lts) this.setAvatar(j.data, j.edited);
+-      } catch {}
+-    },
+-    async syncAvatar() {
+-      const data = this.avatarDe(this.PROFIL);
+-      try {
+-        const res = await fetch("/api/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, data }) });
+-        const j = await res.json();
+-        if (j.ok) { this.setAvatar(data, j.edited || new Date().toISOString()); return true; }
+-        this.toast((data ? "Avatar non envoyé" : "Suppression non propagée") + " : " + this.raisonSync(res, j));
+-        return false;
+-      } catch (e) { this.toast("Avatar non envoyé : " + this.raisonSync(null, null)); return false; }
+-    },
+-
+-    /* ---------- Listes d'envie + Envies d'achat : synchro Notion PARTAGÉE ----------
+-       Une seule page Notion centrale : toutes les modifs (captures d'écran comprises)
+-       sont visibles de tous les profils et de tous les appareils.
+-       Les photos partent en miniatures, dans la limite d'un budget de caractères
+-       (les pages méta Notion sont plafonnées à ~180 Ko). */
++    /* ---------- Listes d'envie + Envies d'achat : docs D1 PARTAGÉS ----------
++       Un seul doc D1 central (profil thomas) : toutes les modifs (captures d'écran
++       comprises) sont visibles de tous les profils et de tous les appareils.
++       Les photos partent en miniatures, dans la limite du budget de caractères. */
+     listesTsKey() { return "ma-cave-listes-ts"; },
+     buesTsKey() { return this.pKeys.db + "-bues-ts"; },
+     enviesTsKey() { return "ma-cave-envies-ts"; },
+@@ -797,111 +645,6 @@
+       return { data: JSON.stringify(out), coupe };
+     },
+ 
+-    /* ---------- Historique des bues : partagé entre appareils (page méta Notion) ----------
+-       Push = liste complète (auto-réparant : un échec d'envoi est comblé par le push suivant),
+-       pull = fusion par clé (date|nom|millésime), les entrées des deux appareils se complètent. */
+-    async pullBues() {
+-      try {
+-        const res = await fetch("/api/bues?profil=" + this.PROFIL);
+-        const j = await res.json();
+-        if (!j.ok || !j.data) return;
+-        const raw = JSON.parse(j.data);
+-        if (!Array.isArray(raw) && !Array.isArray(raw.bues)) return;
+-        const remote = Array.isArray(raw) ? raw : raw.bues;
+-        const rSuppr = Array.isArray(raw) ? [] : (raw.suppr || []);   /* clés supprimées sur un autre appareil */
+-        const ts = localStorage.getItem(this.buesTsKey());
+-        if (ts && j.edited && j.edited <= ts) return;
+-        const k = x => (x.date || "") + "|" + (x.nom || "") + "|" + (x.millesime ?? "");
+-        const loc = new Map((this.db.bues || []).map(x => [k(x), x]));
+-        let changed = 0, suppr = 0;
+-        for (const s of rSuppr) { if (loc.delete(s)) { changed++; suppr++; } }   /* appliquer les suppressions distantes */
+-        for (const r of remote) {
+-          const kk = k(r);
+-          if (!loc.has(kk) || JSON.stringify(loc.get(kk)) !== JSON.stringify(r)) { loc.set(kk, { ...(loc.get(kk) || {}), ...r }); changed++; }
+-        }
+-        if (changed) {
+-          this.db.bues = [...loc.values()].sort((a, b) => (a.date || "") < (b.date || "") ? -1 : 1);
+-          /* Les entrées du serveur (ancien format) n'ont pas d'id : sans id, la fiche
+-             « bue » ne s'ouvre pas (bueOuverte cherche par id) et les :key explosent. */
+-          this.db.bues.forEach(h => { if (!h.id) h.id = uid(); });
+-          this.buesFiche = null;
+-          this.save();
+-          this.toast((suppr && changed === suppr) ? (suppr > 1 ? suppr + " bouteilles bues supprimées" : "1 bouteille bue supprimée") : changed > 1 ? changed + " bouteilles bues récupérée(s) de l’autre appareil" : "1 bouteille bue récupérée de l’autre appareil");
+-        }
+-        try { localStorage.setItem(this.buesTsKey(), j.edited || new Date().toISOString()); } catch {}
+-      } catch {}
+-    },
+-    async syncBues() {
+-      try {
+-        const data = JSON.stringify({ bues: (this.db.bues || []).slice(-1000), suppr: (this.db.buesSuppr || []).slice(-300) });
+-        const res = await fetch("/api/bues", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, data }) });
+-        const j = await res.json();
+-        if (j.ok) { try { localStorage.setItem(this.buesTsKey(), j.edited || new Date().toISOString()); } catch {} return true; }
+-        return false;
+-      } catch { return false; }
+-    },
+-
+-    async pullListes() {
+-      try {
+-        const res = await fetch("/api/listes");
+-        const j = await res.json();
+-        if (!j.ok || !j.data) return;
+-        const remote = JSON.parse(j.data);
+-        if (!Array.isArray(remote)) return;
+-        const lts = localStorage.getItem(this.listesTsKey());
+-        if (!lts || !j.edited || j.edited > lts) {
+-          this.db.listes = remote.map(l => ({ ...l, ids: l.ids || [], qtes: l.qtes || {}, ext: l.ext || [] }));
+-          this.save();
+-          localStorage.setItem(this.listesTsKey(), j.edited || new Date().toISOString());
+-        }
+-      } catch {}
+-    },
+-    async syncListes() {
+-      try {
+-        const p = this.listesPourSync();
+-        const res = await fetch("/api/listes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: p.data }) });
+-        const j = await res.json();
+-        if (j.ok) {
+-          localStorage.setItem(this.listesTsKey(), j.edited || new Date().toISOString());
+-          if (p.coupe) this.toast("Listes envoyées — certaines captures trop lourdes restent locales");
+-          return true;
+-        }
+-        this.toast("Listes non envoyées : " + this.raisonSync(res, j));
+-        return false;
+-      } catch (e) { this.toast("Listes non envoyées : " + this.raisonSync(null, null)); return false; }
+-    },
+-
+-    async pullEnvies() {
+-      try {
+-        const res = await fetch("/api/envies");
+-        const j = await res.json();
+-        if (!j.ok || !j.data) return;
+-        const remote = JSON.parse(j.data);
+-        if (!Array.isArray(remote)) return;
+-        const ts = localStorage.getItem(this.enviesTsKey());
+-        if (!ts || !j.edited || j.edited > ts) {
+-          this.db.envies = remote.map(e => ({ ...e, items: e.items || [] }));
+-          this.save();
+-          localStorage.setItem(this.enviesTsKey(), j.edited || new Date().toISOString());
+-        }
+-      } catch {}
+-    },
+-    async syncEnvies() {
+-      try {
+-        const p = this.enviesPourSync();
+-        const res = await fetch("/api/envies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: p.data }) });
+-        const j = await res.json();
+-        if (j.ok) {
+-          localStorage.setItem(this.enviesTsKey(), j.edited || new Date().toISOString());
+-          if (p.coupe) this.toast("Envies envoyées — certaines photos trop lourdes restent locales");
+-          return true;
+-        }
+-        this.toast("Envies non envoyées : " + this.raisonSync(res, j));
+-        return false;
+-      } catch (e) { this.toast("Envies non envoyées : " + this.raisonSync(null, null)); return false; }
+-    },
+-
+-
+     /* ---------- Import ---------- */
+ 
+     async parseImport(file) { return parseImportFile(file); },
+@@ -917,8 +660,7 @@
+     },
+ 
+     /* ==================== BDD Cloudflare D1 (v2.10) ====================
+-       Double-run : la synchro Notion historique continue comme avant, et la
+-       vraie BDD (D1 + photos KV) reçoit les mêmes données. Tant que le jeton
++       Depuis la v2.22, c'est la SEULE synchro : D1 + photos KV. Tant que le jeton
+        n'est pas posé (onglet Profil), cette couche ne fait strictement rien. */
+ 
+     d1Token() { try { return localStorage.getItem("ma-cave-token") || ""; } catch { return ""; } },
+@@ -1137,21 +879,6 @@
+         this.d1Write("-d1ph", ph);
+       }
+     },
+-    /* « Récupérer Notion » : recopie la base Notion du profil dans la BDD puis fusionne dans l'app.
+-       Retourne { ok, bouteilles, docs, error } — la pastille du ProfilSheet affiche le résultat. */
+-    async d1MigrateNotion() {
+-      if (!this.d1Token()) return { ok: false, error: "Colle d'abord le jeton puis « Lier cet appareil »." };
+-      this.syncBusy(true);
+-      try {
+-        const res = await this.d1Fetch("/api/migrate-notion?profil=" + this.PROFIL, { method: "POST" });
+-        const j = await res.json();
+-        if (!j.ok) { console.error("[BDD] migration refusée :", res.status, j.error); return { ok: false, error: j.error || ("HTTP " + res.status) }; }
+-        console.log("[BDD] migration Notion :", j.bouteilles, "bouteilles,", j.docs, "documents");
+-        await this.d1Pull(true);
+-        return { ok: true, bouteilles: j.bouteilles || 0, docs: j.docs || 0 };
+-      } catch (e) { console.error("[BDD] migration échouée :", e); return { ok: false, error: "connexion impossible" }; }
+-      finally { this.syncBusy(false); }
+-    },
+ 
+     /* ---------- Préférences du soir (météo, saison, apogée) ---------- */
+     SOIR_DEFAUT: { meteo: true, saison: true, apogee: true, bandeauSoir: true, bandeauApogee: true, voyage: false, lat: null, lon: null, ville: "" },
+@@ -1161,32 +888,6 @@
+     },
+     setSoirPrefs(p) { try { localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(p)); } catch {} this.soirVersion++; this.d1Plan(); },
+     soirPrefsTs() { try { return localStorage.getItem(this.pKeys.db + "-soir-prefs-ts") || null; } catch { return null; } },
+-    /* Préférences du soir : sauvegardées dans Notion (page méta « Préférences soir » du profil),
+-       pour les retrouver après réinstallation de la PWA ou sur un autre appareil. */
+-    async pullSoirPrefs() {
+-      try {
+-        const res = await fetch("/api/prefs-soir?profil=" + this.PROFIL);
+-        const j = await res.json();
+-        if (!j.ok || !j.data) return;
+-        const lts = this.soirPrefsTs();
+-        if (lts && j.edited && j.edited <= lts) return; /* local plus récent → on pousse à la prochaine modif */
+-        const p = JSON.parse(j.data);
+-        localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(p));
+-        localStorage.setItem(this.pKeys.db + "-soir-prefs-ts", j.edited || new Date().toISOString());
+-        this.soirVersion++;
+-      } catch {}
+-    },
+-    async syncSoirPrefs() {
+-      const data = JSON.stringify(this.soirPrefs());
+-      try {
+-        const res = await fetch("/api/prefs-soir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, data }) });
+-        const j = await res.json();
+-        if (j.ok) { try { localStorage.setItem(this.pKeys.db + "-soir-prefs-ts", j.edited || new Date().toISOString()); } catch {} return true; }
+-        this.toast("Préférences non sauvegardées : " + this.raisonSync(res, j));
+-        return false;
+-      } catch (e) { this.toast("Préférences non sauvegardées : " + this.raisonSync(null, null)); return false; }
+-    },
+-
+     toggleDark() {
+       this.darkOn = !this.darkOn;
+       try { localStorage.setItem("ma-cave-dark", this.darkOn ? "1" : "0"); } catch {}
+@@ -1268,7 +969,7 @@
+         this.db.envies = this.db.envies || [];
+         for (const ne of obj.envies) if (ne && ne.id && !this.db.envies.some(e => e.id === ne.id)) this.db.envies.push({ ...ne, items: ne.items || [] });
+       }
+-      if (obj.avatar) { try { this.setAvatar(obj.avatar); this.syncAvatar(); } catch {} }
++      if (obj.avatar) { try { this.setAvatar(obj.avatar); } catch {} }
+       this.save();
+       return { ajoutes, maj };
+     },
+--- a/src/App.vue
++++ b/src/App.vue
+@@ -112,16 +112,12 @@
+   pin.value = "";
+   pinErr.value = false;
+   cave.useProfil(id);
+-  cave.pullAvatar();
+-  cave.pullSoirPrefs();
+-  cave.pullListes();
+-  cave.pullBues();
+-  cave.pullEnvies();
++  cave.d1Pull(false);
+   phase.value = "app";
+-  cave.autoPull().then(st => {
++  cave.d1Pull(false).then(st => {
+     const prenom = cave.PROFILS[id].nom;
+-    cave.toast(st === "ok" || st === "fresh" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro : ${cave.derniereRaison || 'retente plus tard'}`);
+-  }); cave.flushQueue(); cave.autoBackup(); cave.d1Pull(false);
++    cave.toast(st === "ok" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro — ça réessaiera tout seul`);
++  }); cave.autoBackup();
+   /* BDD : rafraîchissement silencieux toutes les 5 min — multi-appareils quasi temps réel */
+   setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 5 * 60 * 1000);
+   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cave.d1Pull(false); });
+@@ -140,10 +136,9 @@
+ provide("openFiche", (id, retour) => cave.openFiche(id, retour));
+ provide("onAvatar", onAvatar);
+ 
+-/* File d'attente Notion : vidée dès que le réseau revient, et re-essayée toutes
+-   les 5 minutes tant qu'il reste des actions (ex. « boire une bouteille ») à envoyer. */
+-window.addEventListener("online", () => cave.flushQueue());
+-setInterval(() => { if (navigator.onLine && cave.queueLen()) cave.flushQueue(); }, 5 * 60 * 1000);
++/* Hors ligne : dès que le réseau revient, on renvoie ce qui n'est pas encore
++   dans la BDD (le push D1 part normalement à chaque sauvegarde). */
++window.addEventListener("online", () => cave.d1Push().catch(() => {}));
+ 
+ /* Popin de confirmation : verrouille aussi le scroll de fond */
+ watch(() => cave.askConf, v => cave.overlay("ask", !!v));
+@@ -170,7 +165,7 @@
+ function onAvatar(ev) {
+   const f = ev.target.files[0];
+   if (!f) return;
+-  photoFromFile(f, data => { cave.setAvatar(data); cave.syncAvatar(); cave.toast("Photo de profil mise à jour"); }, 256);
++  photoFromFile(f, data => { cave.setAvatar(data); cave.toast("Photo de profil mise à jour"); }, 256);
+   ev.target.value = "";
+ }
+ </script>
+--- a/src/components/ProfilSheet.vue
++++ b/src/components/ProfilSheet.vue
+@@ -22,7 +22,6 @@
+ function removeAvatar() {
+   cave.askConfirm("Retirer ta photo de profil ?", "Retirer", () => {
+     cave.setAvatar(null);
+-    cave.syncAvatar();
+     cave.toast("Photo de profil retirée");
+   });
+ }
+@@ -151,7 +150,7 @@
+ const geoEnCours = ref(false);
+ const villeSaisie = ref("");
+ const enAttente = ref(null); /* { lat, lon, ville } en attente de validation */
+-function majPrefs(patch) { prefs.value = { ...prefs.value, ...patch }; cave.setSoirPrefs(prefs.value); cave.syncSoirPrefs(); }
++function majPrefs(patch) { prefs.value = { ...prefs.value, ...patch }; cave.setSoirPrefs(prefs.value); }
+ /* Toggle maître : éteindre la suggestion du soir éteint aussi ses 3 critères (apogée,
+    saison, météo) — on ne veut plus de la fonctionnalité. Le matin, chaque critère
+    reste individuel : rallumer le bandeau ne force rien. */
+@@ -425,7 +424,7 @@
+       </div>
+ 
+ 
+-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.21.5</p>
++      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.22.0</p>
+       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
+     </div>
+   </div>
+--- a/src/components/ListesSheet.vue
++++ b/src/components/ListesSheet.vue
+@@ -1,5 +1,5 @@
+ <script setup>
+-/* Feuille glissante « Listes d'envie » — quantités, dates, bandeau post-événement, synchro Notion */
++/* Feuille glissante « Listes d'envie » — quantités, dates, bandeau post-événement, synchro BDD D1 */
+ import { ref, computed, watch } from "vue";
+ import { useCave } from "../stores/cave.js";
+ import { cepageCourt, fmtListeDate, joursAvant, photoFromFile } from "../util.js";
+@@ -33,43 +33,43 @@
+   if (!nom) { cave.toast("Donne un nom à ta liste"); return; }
+   cave.listes.push({ id: "l" + Date.now().toString(36), nom, date: null, ids: [], qtes: {} });
+   nouveauNom.value = "";
+-  cave.save(); cave.syncListes();
++  cave.save();
+   cave.toast(`Liste « ${nom} » créée`);
+ }
+ function renommer(l) {
+   const nom = (renNom.value || "").trim();
+-  if (nom) { l.nom = nom; cave.save(); cave.syncListes(); cave.toast("Liste renommée"); }
++  if (nom) { l.nom = nom; cave.save(); cave.toast("Liste renommée"); }
+   listeEditId.value = null;
+ }
+ function supprimer(l) {
+   cave.askConfirm(`Supprimer la liste « ${l.nom} » ? Les bouteilles restent dans la cave.`, "Supprimer", () => {
+     cave.db.listes = cave.listes.filter(x => x.id !== l.id);
+     listeEditId.value = null; listeOpenId.value = null;
+-    cave.save(); cave.syncListes();
++    cave.save();
+     cave.toast("Liste supprimée");
+   });
+ }
+ function ajouter(l, b) {
+-  if ((l.ids || []).includes(b.id)) { l.ids = l.ids.filter(x => x !== b.id); delete l.qtes[b.id]; cave.save(); cave.syncListes(); return; }
++  if ((l.ids || []).includes(b.id)) { l.ids = l.ids.filter(x => x !== b.id); delete l.qtes[b.id]; cave.save(); return; }
+   cave.toggleListe(l.id, b);
+ }
+ function retirer(l, b) {
+   l.ids = (l.ids || []).filter(x => x !== b.id);
+   delete l.qtes[b.id];
+-  cave.save(); cave.syncListes();
++  cave.save();
+   cave.toast(`Sortie de « ${l.nom} »`);
+ }
+ function qte(l, b, delta) {
+   l.qtes[b.id] = Math.max(1, Math.min(b.quantite, cave.listeQ(l, b.id) + delta));
+   if (l.qtes[b.id] <= 1) delete l.qtes[b.id];
+-  cave.save(); cave.syncListes();
++  cave.save();
+ }
+ function bloquee(b, l) { return b.quantite === 1 && cave.listesDe(b).some(x => x.id !== l.id); }
+ function saveDate(l) {
+   l.date = l._dateTmp || l.date;
+   l.postEvent = null;
+   listeDateId.value = null;
+-  cave.save(); cave.syncListes();
++  cave.save();
+   cave.toast(l.date ? `Date enregistrée : ${fmtListeDate(l.date)}` : "Date enlevée");
+ }
+ 
+@@ -96,24 +96,24 @@
+   const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? null : n; };
+   l.ext = l.ext || [];
+   l.ext.push({ id: "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), nom: (x.nom || "").trim(), prix: num(x.prix), url: (x.url || "").trim(), photo: x.photo || null, ajouteLe: null });
+-  cave.save(); cave.syncListes();
++  cave.save();
+   ouvrirExtForm(l);
+   cave.toast("Bouteille repérée ajoutée à la liste");
+ }
+ function supprimerExt(l, x) {
+   cave.askConfirm(`Supprimer « ${x.nom || "bouteille sans nom"} » de la liste ?`, "Supprimer", () => {
+     l.ext = (l.ext || []).filter(y => y.id !== x.id);
+-    cave.save(); cave.syncListes();
++    cave.save();
+     cave.toast("Retirée de la liste");
+   });
+ }
+ function extVersCave(l, x) {
+   x.ajouteLe = new Date().toISOString();
+-  cave.save(); cave.syncListes();
++  cave.save();
+   emit("toCave", { nom: x.nom || "", millesime: null, prix: x.prix ?? null, commentaire: x.url ? "🔗 " + x.url : "" });
+   cave.toast((x.nom || "Bouteille") + " — formulaire d'ajout pré-rempli");
+ }
+-function annuleExt(l, x) { x.ajouteLe = null; cave.save(); cave.syncListes(); }
++function annuleExt(l, x) { x.ajouteLe = null; cave.save(); }
+ </script>
+ 
+ <template>
+@@ -152,7 +152,7 @@
+           <template v-if="listeDateId === l.id">
+             <input type="date" v-model="l._dateTmp" class="bg-white border border-hairline rounded-full px-2.5 py-1 text-[11px] shrink-0" />
+             <button @click="saveDate(l)" class="shrink-0 text-[10px] font-bold bg-accent text-white rounded-full px-2.5 py-1 whitespace-nowrap">OK</button>
+-            <button v-if="l.date" @click="l.date = null; listeDateId = null; cave.save(); cave.syncListes()" class="shrink-0 text-[10px] text-muted underline whitespace-nowrap">enlever</button>
++            <button v-if="l.date" @click="l.date = null; listeDateId = null; cave.save();" class="shrink-0 text-[10px] text-muted underline whitespace-nowrap">enlever</button>
+           </template>
+           <template v-else-if="!l.date">
+             <button @click="l._dateTmp = ''; listeDateId = l.id" class="text-[10px] text-gold underline whitespace-nowrap">+ date</button>
+--- a/src/components/FicheModal.vue
++++ b/src/components/FicheModal.vue
+@@ -93,7 +93,6 @@
+   edit.value = false;
+   cave.closeFiche();
+   cave.toast("Fiche mise à jour");
+-  cave.syncNotion({ action: "sync", bouteilles: [bo] });
+ }
+ 
+ function saveNote() {
+@@ -120,10 +119,9 @@
+   cave.askConfirm(`Supprimer ${nom} de la cave ?`, "Supprimer", () => {
+     const i = cave.db.bouteilles.findIndex(x => x.id === b.value.id);
+     if (i > -1) {
+-      cave.syncNotion({ action: "delete", bouteille: cave.db.bouteilles[i] });
+       cave.db.bouteilles.splice(i, 1);
+       for (const l of cave.listes) l.ids = (l.ids || []).filter(x => x !== b.value.id);
+-      cave.save(); cave.syncListes();
++      cave.save();
+     }
+     cave.closeFiche();
+     cave.toast("Bouteille supprimée de la cave");
+@@ -153,7 +151,7 @@
+   if (b.value.quantite === 1) { for (const o of cave.listes) { o.ids = (o.ids || []).filter(x => x !== b.value.id); delete o.qtes[b.value.id]; } }
+   cave.listes.push(l);
+   listeNewNom.value = false;
+-  cave.save(); cave.syncListes();
++  cave.save();
+   cave.toast(`Réservée dans la nouvelle liste « ${nom} »`);
+ }
+ 
+--- a/src/components/FicheBueModal.vue
++++ b/src/components/FicheBueModal.vue
+@@ -33,7 +33,7 @@
+   hh.occasion = occ.value || "";
+   hh.avec = (avec.value || "").trim();
+   cave.save();
+-  cave.syncBues();
++
+   cave.buesFiche = null;
+   cave.toast(hh.commentaire ? `Note ${hh.note} et souvenir enregistrés` : `Note ${hh.note} enregistrée`);
+ }
+--- a/src/components/ImportPreview.vue
++++ b/src/components/ImportPreview.vue
+@@ -20,7 +20,6 @@
+   cave.toast(`Import : ${r.created} nouvelle${r.created > 1 ? "s" : ""}, ${r.updated} mise${r.updated > 1 ? "s" : ""} à jour`);
+   /* Une seule requête groupée pour TOUT l'import (jamais un appel par bouteille :
+      400 lignes = 400 requêtes → quota Cloudflare grillé) */
+-  if (r.created) cave.syncNotion({ action: "sync", bouteilles: cave.db.bouteilles.slice(-r.created) });
+ }
+ </script>
+ 
+--- a/src/views/CaveView.vue
++++ b/src/views/CaveView.vue
+@@ -183,7 +183,6 @@
+   else if (b.categorie !== "Spiritueux") { b.apoAuto = estimeApogee(b); b.apoRegle = b.apoAuto ? b.apoAuto.regle : null; }
+   cave.db.bouteilles.unshift(b);
+   cave.save();
+-  cave.syncNotion({ action: "add", bouteille: b });
+   cave.toast(b.nom + " bien ajoutée à la cave");
+   saving.value = false;
+   /* Pastille de confirmation visible puis retour automatique à la cave,
+@@ -523,7 +522,7 @@
+     <ListesSheet :open="showListes" @close="showListes = false" @to-cave="envieVersCave" />
+     <ImportPreview v-if="importRows" :rows="importRows" @close="importRows = null" />
+ 
+-    
++
+     <!-- Modale d'ajout -->
+     <div v-if="showAdd" class="fixed inset-0 z-30 bg-ink/40 flex items-end md:items-center justify-center p-0 md:p-4" @click.self="showAdd = false">
+       <div class="bg-white rounded-t-xl2 md:rounded-xl2 w-full max-w-md max-h-[92vh] overflow-y-auto">
+--- a/src/views/EnviesView.vue
++++ b/src/views/EnviesView.vue
+@@ -53,7 +53,7 @@
+   if (!nom) { cave.toast("Donne un titre à ta note pour pouvoir l'enregistrer"); return; }
+   const e = { id: "e" + Date.now().toString(36), nom, caviste: "", creeLe: new Date().toISOString(), items: [] };
+   cave.db.envies.unshift(e);
+-  cave.save(); cave.syncEnvies();
++  cave.save();
+   nouveauNom.value = "";
+   ouvrirNote(e);
+   cave.toast(`Note « ${nom} » créée`);
+@@ -73,14 +73,14 @@
+   const nom = (renNom.value || "").trim();
+   if (nom) e.nom = nom;
+   e.caviste = (renCaviste.value || "").trim();
+-  cave.save(); cave.syncEnvies();
++  cave.save();
+   editMeta.value = false;
+   cave.toast("Note mise à jour");
+ }
+ function supprimerNote(e) {
+   cave.askConfirm(`Supprimer la note « ${e.nom} » ?`, "Supprimer", () => {
+     cave.db.envies = envies.value.filter(x => x.id !== e.id);
+-    cave.save(); cave.syncEnvies();
++    cave.save();
+     noteOuverte.value = null;
+     cave.toast("Note supprimée");
+   });
+@@ -104,7 +104,7 @@
+   it.prix = num(ei.value.prix);
+   it.commentaire = (ei.value.commentaire || "").trim();
+   it.photos = ei.value.photos || [];
+-  cave.save(); cave.syncEnvies();
++  cave.save();
+   editItId.value = null;
+   cave.toast("Bouteille mise à jour");
+ }
+@@ -120,7 +120,7 @@
+     prix: num(it.prix), commentaire: (it.commentaire || "").trim(),
+     photos: it.photos || [], ajouteLe: null,
+   });
+-  cave.save(); cave.syncEnvies();
++  cave.save();
+   ouvrirForm();
+   cave.toast("Bouteille ajoutée à la note");
+ }
+@@ -128,7 +128,7 @@
+   cave.askConfirm(`Supprimer « ${it.nom || "bouteille sans nom"} » de la note ?`, "Supprimer", () => {
+     const e = noteOuverte.value;
+     e.items = (e.items || []).filter(x => x.id !== it.id);
+-    cave.save(); cave.syncEnvies();
++    cave.save();
+     cave.toast("Bouteille retirée de la note");
+   });
+ }
+@@ -150,12 +150,12 @@
+ /* Promotion en cave : retour sur la vue Cave avec le formulaire pré-rempli */
+ function versCave(it) {
+   it.ajouteLe = new Date().toISOString();
+-  cave.save(); cave.syncEnvies();
++  cave.save();
+   cave.enviePrefill = it;
+   cave.toast(`${it.nom || "Bouteille"} — formulaire d'ajout pré-rempli`);
+   fermerNote();
+ }
+-function annuleAchete(it) { it.ajouteLe = null; cave.save(); cave.syncEnvies(); }
++function annuleAchete(it) { it.ajouteLe = null; cave.save(); }
+ function fmtDate(iso) { return ilYA(new Date(iso).getTime()); }
+ 
+ /* ---------- Partage des notes (multi-sélection) : WhatsApp ou PDF ---------- */
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "ma-cave",
+   "private": true,
+-  "version": "2.21.5",
++  "version": "2.22.0",
+   "type": "module",
+   "scripts": {
+     "dev": "vite",

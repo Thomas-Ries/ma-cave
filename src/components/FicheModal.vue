@@ -93,7 +93,6 @@ function saveEdit() {
   edit.value = false;
   cave.closeFiche();
   cave.toast("Fiche mise à jour");
-  cave.syncNotion({ action: "sync", bouteilles: [bo] });
 }
 
 function saveNote() {
@@ -120,10 +119,9 @@ function supprimer() {
   cave.askConfirm(`Supprimer ${nom} de la cave ?`, "Supprimer", () => {
     const i = cave.db.bouteilles.findIndex(x => x.id === b.value.id);
     if (i > -1) {
-      cave.syncNotion({ action: "delete", bouteille: cave.db.bouteilles[i] });
       cave.db.bouteilles.splice(i, 1);
       for (const l of cave.listes) l.ids = (l.ids || []).filter(x => x !== b.value.id);
-      cave.save(); cave.syncListes();
+      cave.save();
     }
     cave.closeFiche();
     cave.toast("Bouteille supprimée de la cave");
@@ -153,7 +151,7 @@ function newFicheListe() {
   if (b.value.quantite === 1) { for (const o of cave.listes) { o.ids = (o.ids || []).filter(x => x !== b.value.id); delete o.qtes[b.value.id]; } }
   cave.listes.push(l);
   listeNewNom.value = false;
-  cave.save(); cave.syncListes();
+  cave.save();
   cave.toast(`Réservée dans la nouvelle liste « ${nom} »`);
 }
 

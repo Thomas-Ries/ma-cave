@@ -20,7 +20,6 @@ function ok() {
   cave.toast(`Import : ${r.created} nouvelle${r.created > 1 ? "s" : ""}, ${r.updated} mise${r.updated > 1 ? "s" : ""} à jour`);
   /* Une seule requête groupée pour TOUT l'import (jamais un appel par bouteille :
      400 lignes = 400 requêtes → quota Cloudflare grillé) */
-  if (r.created) cave.syncNotion({ action: "sync", bouteilles: cave.db.bouteilles.slice(-r.created) });
 }
 </script>
 

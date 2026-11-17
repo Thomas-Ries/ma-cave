@@ -22,7 +22,6 @@ function changeAvatar(ev) {
 function removeAvatar() {
   cave.askConfirm("Retirer ta photo de profil ?", "Retirer", () => {
     cave.setAvatar(null);
-    cave.syncAvatar();
     cave.toast("Photo de profil retirée");
   });
 }
@@ -151,7 +150,7 @@ const prefs = ref(cave.soirPrefs());
 const geoEnCours = ref(false);
 const villeSaisie = ref("");
 const enAttente = ref(null); /* { lat, lon, ville } en attente de validation */
-function majPrefs(patch) { prefs.value = { ...prefs.value, ...patch }; cave.setSoirPrefs(prefs.value); cave.syncSoirPrefs(); }
+function majPrefs(patch) { prefs.value = { ...prefs.value, ...patch }; cave.setSoirPrefs(prefs.value); }
 /* Toggle maître : éteindre la suggestion du soir éteint aussi ses 3 critères (apogée,
    saison, météo) — on ne veut plus de la fonctionnalité. Le matin, chaque critère
    reste individuel : rallumer le bandeau ne force rien. */
@@ -425,7 +424,7 @@ function confirmDisable() {
       </div>
 
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.21.5</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.22.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

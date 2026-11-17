@@ -183,7 +183,6 @@ function saveAdd() {
   else if (b.categorie !== "Spiritueux") { b.apoAuto = estimeApogee(b); b.apoRegle = b.apoAuto ? b.apoAuto.regle : null; }
   cave.db.bouteilles.unshift(b);
   cave.save();
-  cave.syncNotion({ action: "add", bouteille: b });
   cave.toast(b.nom + " bien ajoutée à la cave");
   saving.value = false;
   /* Pastille de confirmation visible puis retour automatique à la cave,
@@ -523,7 +522,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
     <ListesSheet :open="showListes" @close="showListes = false" @to-cave="envieVersCave" />
     <ImportPreview v-if="importRows" :rows="importRows" @close="importRows = null" />
 
-    
+
     <!-- Modale d'ajout -->
     <div v-if="showAdd" class="fixed inset-0 z-30 bg-ink/40 flex items-end md:items-center justify-center p-0 md:p-4" @click.self="showAdd = false">
       <div class="bg-white rounded-t-xl2 md:rounded-xl2 w-full max-w-md max-h-[92vh] overflow-y-auto">

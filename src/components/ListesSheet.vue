@@ -1,5 +1,5 @@
 <script setup>
-/* Feuille glissante « Listes d'envie » — quantités, dates, bandeau post-événement, synchro Notion */
+/* Feuille glissante « Listes d'envie » — quantités, dates, bandeau post-événement, synchro BDD D1 */
 import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
 import { cepageCourt, fmtListeDate, joursAvant, photoFromFile } from "../util.js";
@@ -33,43 +33,43 @@ function creer() {
   if (!nom) { cave.toast("Donne un nom à ta liste"); return; }
   cave.listes.push({ id: "l" + Date.now().toString(36), nom, date: null, ids: [], qtes: {} });
   nouveauNom.value = "";
-  cave.save(); cave.syncListes();
+  cave.save();
   cave.toast(`Liste « ${nom} » créée`);
 }
 function renommer(l) {
   const nom = (renNom.value || "").trim();
-  if (nom) { l.nom = nom; cave.save(); cave.syncListes(); cave.toast("Liste renommée"); }
+  if (nom) { l.nom = nom; cave.save(); cave.toast("Liste renommée"); }
   listeEditId.value = null;
 }
 function supprimer(l) {
   cave.askConfirm(`Supprimer la liste « ${l.nom} » ? Les bouteilles restent dans la cave.`, "Supprimer", () => {
     cave.db.listes = cave.listes.filter(x => x.id !== l.id);
     listeEditId.value = null; listeOpenId.value = null;
-    cave.save(); cave.syncListes();
+    cave.save();
     cave.toast("Liste supprimée");
   });
 }
 function ajouter(l, b) {
-  if ((l.ids || []).includes(b.id)) { l.ids = l.ids.filter(x => x !== b.id); delete l.qtes[b.id]; cave.save(); cave.syncListes(); return; }
+  if ((l.ids || []).includes(b.id)) { l.ids = l.ids.filter(x => x !== b.id); delete l.qtes[b.id]; cave.save(); return; }
   cave.toggleListe(l.id, b);
 }
 function retirer(l, b) {
   l.ids = (l.ids || []).filter(x => x !== b.id);
   delete l.qtes[b.id];
-  cave.save(); cave.syncListes();
+  cave.save();
   cave.toast(`Sortie de « ${l.nom} »`);
 }
 function qte(l, b, delta) {
   l.qtes[b.id] = Math.max(1, Math.min(b.quantite, cave.listeQ(l, b.id) + delta));
   if (l.qtes[b.id] <= 1) delete l.qtes[b.id];
-  cave.save(); cave.syncListes();
+  cave.save();
 }
 function bloquee(b, l) { return b.quantite === 1 && cave.listesDe(b).some(x => x.id !== l.id); }
 function saveDate(l) {
   l.date = l._dateTmp || l.date;
   l.postEvent = null;
   listeDateId.value = null;
-  cave.save(); cave.syncListes();
+  cave.save();
   cave.toast(l.date ? `Date enregistrée : ${fmtListeDate(l.date)}` : "Date enlevée");
 }
 
@@ -96,24 +96,24 @@ function ajouterExt(l) {
   const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? null : n; };
   l.ext = l.ext || [];
   l.ext.push({ id: "x" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), nom: (x.nom || "").trim(), prix: num(x.prix), url: (x.url || "").trim(), photo: x.photo || null, ajouteLe: null });
-  cave.save(); cave.syncListes();
+  cave.save();
   ouvrirExtForm(l);
   cave.toast("Bouteille repérée ajoutée à la liste");
 }
 function supprimerExt(l, x) {
   cave.askConfirm(`Supprimer « ${x.nom || "bouteille sans nom"} » de la liste ?`, "Supprimer", () => {
     l.ext = (l.ext || []).filter(y => y.id !== x.id);
-    cave.save(); cave.syncListes();
+    cave.save();
     cave.toast("Retirée de la liste");
   });
 }
 function extVersCave(l, x) {
   x.ajouteLe = new Date().toISOString();
-  cave.save(); cave.syncListes();
+  cave.save();
   emit("toCave", { nom: x.nom || "", millesime: null, prix: x.prix ?? null, commentaire: x.url ? "🔗 " + x.url : "" });
   cave.toast((x.nom || "Bouteille") + " — formulaire d'ajout pré-rempli");
 }
-function annuleExt(l, x) { x.ajouteLe = null; cave.save(); cave.syncListes(); }
+function annuleExt(l, x) { x.ajouteLe = null; cave.save(); }
 </script>
 
 <template>
@@ -152,7 +152,7 @@ function annuleExt(l, x) { x.ajouteLe = null; cave.save(); cave.syncListes(); }
           <template v-if="listeDateId === l.id">
             <input type="date" v-model="l._dateTmp" class="bg-white border border-hairline rounded-full px-2.5 py-1 text-[11px] shrink-0" />
             <button @click="saveDate(l)" class="shrink-0 text-[10px] font-bold bg-accent text-white rounded-full px-2.5 py-1 whitespace-nowrap">OK</button>
-            <button v-if="l.date" @click="l.date = null; listeDateId = null; cave.save(); cave.syncListes()" class="shrink-0 text-[10px] text-muted underline whitespace-nowrap">enlever</button>
+            <button v-if="l.date" @click="l.date = null; listeDateId = null; cave.save();" class="shrink-0 text-[10px] text-muted underline whitespace-nowrap">enlever</button>
           </template>
           <template v-else-if="!l.date">
             <button @click="l._dateTmp = ''; listeDateId = l.id" class="text-[10px] text-gold underline whitespace-nowrap">+ date</button>

@@ -112,16 +112,12 @@ function entrerProfil(id) {
   pin.value = "";
   pinErr.value = false;
   cave.useProfil(id);
-  cave.pullAvatar();
-  cave.pullSoirPrefs();
-  cave.pullListes();
-  cave.pullBues();
-  cave.pullEnvies();
+  cave.d1Pull(false);
   phase.value = "app";
-  cave.autoPull().then(st => {
+  cave.d1Pull(false).then(st => {
     const prenom = cave.PROFILS[id].nom;
-    cave.toast(st === "ok" || st === "fresh" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro : ${cave.derniereRaison || 'retente plus tard'}`);
-  }); cave.flushQueue(); cave.autoBackup(); cave.d1Pull(false);
+    cave.toast(st === "ok" ? `Salut ${prenom}, on est synchro` : `Salut ${prenom}, petit souci de synchro — ça réessaiera tout seul`);
+  }); cave.autoBackup();
   /* BDD : rafraîchissement silencieux toutes les 5 min — multi-appareils quasi temps réel */
   setInterval(() => { if (document.visibilityState === "visible") cave.d1Pull(false); }, 5 * 60 * 1000);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") cave.d1Pull(false); });
@@ -140,10 +136,9 @@ function entrerProfil(id) {
 provide("openFiche", (id, retour) => cave.openFiche(id, retour));
 provide("onAvatar", onAvatar);
 
-/* File d'attente Notion : vidée dès que le réseau revient, et re-essayée toutes
-   les 5 minutes tant qu'il reste des actions (ex. « boire une bouteille ») à envoyer. */
-window.addEventListener("online", () => cave.flushQueue());
-setInterval(() => { if (navigator.onLine && cave.queueLen()) cave.flushQueue(); }, 5 * 60 * 1000);
+/* Hors ligne : dès que le réseau revient, on renvoie ce qui n'est pas encore
+   dans la BDD (le push D1 part normalement à chaque sauvegarde). */
+window.addEventListener("online", () => cave.d1Push().catch(() => {}));
 
 /* Popin de confirmation : verrouille aussi le scroll de fond */
 watch(() => cave.askConf, v => cave.overlay("ask", !!v));
@@ -170,7 +165,7 @@ watch(route, r => {
 function onAvatar(ev) {
   const f = ev.target.files[0];
   if (!f) return;
-  photoFromFile(f, data => { cave.setAvatar(data); cave.syncAvatar(); cave.toast("Photo de profil mise à jour"); }, 256);
+  photoFromFile(f, data => { cave.setAvatar(data); cave.toast("Photo de profil mise à jour"); }, 256);
   ev.target.value = "";
 }
 </script>

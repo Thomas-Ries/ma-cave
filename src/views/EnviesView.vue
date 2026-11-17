@@ -53,7 +53,7 @@ function creerNote() {
   if (!nom) { cave.toast("Donne un titre à ta note pour pouvoir l'enregistrer"); return; }
   const e = { id: "e" + Date.now().toString(36), nom, caviste: "", creeLe: new Date().toISOString(), items: [] };
   cave.db.envies.unshift(e);
-  cave.save(); cave.syncEnvies();
+  cave.save();
   nouveauNom.value = "";
   ouvrirNote(e);
   cave.toast(`Note « ${nom} » créée`);
@@ -73,14 +73,14 @@ function renommer() {
   const nom = (renNom.value || "").trim();
   if (nom) e.nom = nom;
   e.caviste = (renCaviste.value || "").trim();
-  cave.save(); cave.syncEnvies();
+  cave.save();
   editMeta.value = false;
   cave.toast("Note mise à jour");
 }
 function supprimerNote(e) {
   cave.askConfirm(`Supprimer la note « ${e.nom} » ?`, "Supprimer", () => {
     cave.db.envies = envies.value.filter(x => x.id !== e.id);
-    cave.save(); cave.syncEnvies();
+    cave.save();
     noteOuverte.value = null;
     cave.toast("Note supprimée");
   });
@@ -104,7 +104,7 @@ function saveItem(it) {
   it.prix = num(ei.value.prix);
   it.commentaire = (ei.value.commentaire || "").trim();
   it.photos = ei.value.photos || [];
-  cave.save(); cave.syncEnvies();
+  cave.save();
   editItId.value = null;
   cave.toast("Bouteille mise à jour");
 }
@@ -120,7 +120,7 @@ function ajouterItem() {
     prix: num(it.prix), commentaire: (it.commentaire || "").trim(),
     photos: it.photos || [], ajouteLe: null,
   });
-  cave.save(); cave.syncEnvies();
+  cave.save();
   ouvrirForm();
   cave.toast("Bouteille ajoutée à la note");
 }
@@ -128,7 +128,7 @@ function supprimerItem(it) {
   cave.askConfirm(`Supprimer « ${it.nom || "bouteille sans nom"} » de la note ?`, "Supprimer", () => {
     const e = noteOuverte.value;
     e.items = (e.items || []).filter(x => x.id !== it.id);
-    cave.save(); cave.syncEnvies();
+    cave.save();
     cave.toast("Bouteille retirée de la note");
   });
 }
@@ -150,12 +150,12 @@ function onPhotos(ev, cible) {
 /* Promotion en cave : retour sur la vue Cave avec le formulaire pré-rempli */
 function versCave(it) {
   it.ajouteLe = new Date().toISOString();
-  cave.save(); cave.syncEnvies();
+  cave.save();
   cave.enviePrefill = it;
   cave.toast(`${it.nom || "Bouteille"} — formulaire d'ajout pré-rempli`);
   fermerNote();
 }
-function annuleAchete(it) { it.ajouteLe = null; cave.save(); cave.syncEnvies(); }
+function annuleAchete(it) { it.ajouteLe = null; cave.save(); }
 function fmtDate(iso) { return ilYA(new Date(iso).getTime()); }
 
 /* ---------- Partage des notes (multi-sélection) : WhatsApp ou PDF ---------- */

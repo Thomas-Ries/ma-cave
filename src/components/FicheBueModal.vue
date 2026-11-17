@@ -33,7 +33,7 @@ function save() {
   hh.occasion = occ.value || "";
   hh.avec = (avec.value || "").trim();
   cave.save();
-  cave.syncBues();
+
   cave.buesFiche = null;
   cave.toast(hh.commentaire ? `Note ${hh.note} et souvenir enregistrés` : `Note ${hh.note} enregistrée`);
 }

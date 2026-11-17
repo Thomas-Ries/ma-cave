@@ -1,4 +1,4 @@
-/* Ma Cave — store Pinia : modèle, persistance, profils, synchro Notion (cave + avatars + listes) */
+/* Ma Cave — store Pinia : modèle, persistance, profils, synchro BDD D1 (v2.22 : Notion retiré) */
 import { defineStore } from "pinia";
 import { PROFILS, FORMATS, CATS, CAT_COLORS, uid } from "../config.js";
 import { estimeApogee } from "../lib/apogee.js";
@@ -7,8 +7,7 @@ import { ilYA } from "../util.js";
 import { notifie, planifieRappel, rattrapeRappels } from "../lib/notifs.js";
 import { pushEtat, pushActiver, pushDesactiver, pushMajDigest } from "../lib/push.js";
 
-/* File unique des appels Notion (voir sendNotion) */
-let _notionChain = Promise.resolve();
+
 
 const PROFIL_KEY = "ma-cave-profil";
 const ADMIN_PIN_HASH = 3785925479; /* djb2 du code admin de secours (débloque n'importe quel profil) */
@@ -23,7 +22,6 @@ export const useCave = defineStore("cave", {
     cavePage: 1,
     apoAlerte: null,        /* null | "boire" | "bientot" | "passe" (onglet Apogées) */
     apogeeFiltre: false,    /* filtre « à boire cette année » (bandeau Cave) */
-    derniereRaison: null, /* raison humaine du dernier échec de synchro */
     d1PullTs: 0,           /* horodatage du dernier pull BDD réussi (pastille de synchro) */
     d1Nb: null,            /* nb de bouteilles que la BDD renvoie (décompte Profil) */
     d1Log: [],             /* journal des événements BDD notables (suppressions, renvois…) */
@@ -53,8 +51,8 @@ export const useCave = defineStore("cave", {
     CATS: () => CATS,
     CAT_COLORS: () => CAT_COLORS,
     pKeys() { return this.PROFIL === "thomas"
-      ? { db: "ma-cave-v1", queue: "ma-cave-queue", pull: "ma-cave-lastpull" }
-      : { db: "ma-cave-v1-" + this.PROFIL, queue: "ma-cave-queue-" + this.PROFIL, pull: "ma-cave-lastpull-" + this.PROFIL }; },
+      ? { db: "ma-cave-v1" }
+      : { db: "ma-cave-v1-" + this.PROFIL }; },
     listes() { if (!Array.isArray(this.db.listes)) this.db.listes = []; return this.db.listes; },
     listesDe: (s) => (b) => s.listes.filter(l => (l.ids || []).includes(b.id)),
     nbReservees: (s) => s.listes.reduce((n, l) => n + (l.ids || []).length, 0),
@@ -391,8 +389,8 @@ export const useCave = defineStore("cave", {
       this.combien = null;
       if (!b) return;
       for (let i = 0; i < n; i++) this.drink(c.id, true);
-      if (n === 1) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = this.db.bues[this.db.bues.length - 1]?.id; }
-      else { this.toast(`${n} bouteilles sorties — santé ! Verdicts à noter dans le carnet`); this.syncNotion({ action: "sync", bouteilles: [b] }); }
+      if (n === 1) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.buesFiche = this.db.bues[this.db.bues.length - 1]?.id; }
+      else { this.toast(`${n} bouteilles sorties — santé ! Verdicts à noter dans le carnet`); }
     },
     drink(id, silent) {
       const b = this.db.bouteilles.find(x => x.id === id);
@@ -404,8 +402,7 @@ export const useCave = defineStore("cave", {
       const e = { id: uid(), nom: b.nom, millesime: b.millesime, categorie: b.categorie, date: new Date().toISOString(), note: null, occasion: "", avec: "", commentaire: "" };
       this.db.bues.push(e);
       this.save();
-      this.syncBues();
-      if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.syncNotion({ action: "drink", bouteille: b }); this.buesFiche = e.id; }
+      if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.buesFiche = e.id; }
     },
 
     /* « Ce soir » → rachat en un tap : +1 sur une référence existante. */
@@ -416,7 +413,6 @@ export const useCave = defineStore("cave", {
       cible.statut = cible.statut === "Bue" ? "En cave" : cible.statut;
       cible.modifLe = new Date().toISOString();
       this.save();
-      this.syncNotion({ action: "sync", bouteilles: [cible] });
       this.toast(`${cible.nom} · ×${cible.quantite}`);
     },
 
@@ -431,17 +427,14 @@ export const useCave = defineStore("cave", {
       if (src.quantite > 1) {
         src.quantite--; src.modifLe = now;
         const twin = this.db.bouteilles.find(x => x.cave === "Frigo" && importKey(x) === importKey({ ...src, cave: "Frigo" }));
-        if (twin) { twin.quantite++; twin.modifLe = now; this.syncNotion({ action: "drink", bouteille: twin }); }
+        if (twin) { twin.quantite++; twin.modifLe = now; }
         else {
           const nb = { ...src, id: uid(), cave: "Frigo", quantite: 1, statut: "En cave", modifLe: now };
           this.db.bouteilles.push(nb);
-          this.syncNotion({ action: "add", bouteille: nb });
         }
         this.save();
-        this.syncNotion({ action: "drink", bouteille: src });
       } else {
         src.cave = "Frigo"; src.modifLe = now; this.save();
-        this.syncNotion({ action: "move", bouteille: src, ancienneCave: "Principale" });
       }
       this.toast("Une bouteille au frais pour ce soir 🍷");
     },
@@ -501,8 +494,6 @@ export const useCave = defineStore("cave", {
       this.save();
       this.buesFiche = null;
       this.toast(`${h.nom} remise en cave`);
-      this.syncNotion({ action: "add", bouteille: b });
-      this.syncBues();   /* pousse la liste sans l'entrée annulée + les tombstones */
     },
 
     /* Supprimer une entrée de l'historique des bues (definitif) */
@@ -519,7 +510,6 @@ export const useCave = defineStore("cave", {
       this.save();
       this.buesFiche = null;
       this.toast(`${h.nom} supprimée de l'historique`);
-      this.syncBues();
     },
 
     /* ---------- Listes d'envie ---------- */
@@ -528,17 +518,17 @@ export const useCave = defineStore("cave", {
       if (!l || !b) return false;
       l.ids = l.ids || [];
       const i = l.ids.indexOf(b.id);
-      if (i > -1) { l.ids.splice(i, 1); delete l.qtes[b.id]; this.save(); this.syncListes(); this.toast(`Sortie de « ${l.nom} »`); return true; }
+      if (i > -1) { l.ids.splice(i, 1); delete l.qtes[b.id]; this.save(); this.toast(`Sortie de « ${l.nom} »`); return true; }
       const autres = this.listesDe(b).filter(x => x.id !== listeId);
       if (b.quantite === 1 && autres.length) {
         const autre = autres[0], dest = l;
         this.askConfirm(`Il ne t'en reste qu'une — elle est déjà dans « ${autre.nom} ». La déplacer vers « ${dest.nom} » ?`, "Déplacer", () => {
           autre.ids = autre.ids.filter(x => x !== b.id); delete autre.qtes[b.id];
-          dest.ids.push(b.id); dest.qtes[b.id] = 1; this.save(); this.syncListes(); this.toast(`Déplacée vers « ${dest.nom} »`);
+          dest.ids.push(b.id); dest.qtes[b.id] = 1; this.save(); this.toast(`Déplacée vers « ${dest.nom} »`);
         });
         return false;
       }
-      l.ids.push(b.id); l.qtes[b.id] = 1; this.save(); this.syncListes(); this.toast(`Réservée dans « ${l.nom} »`); return true;
+      l.ids.push(b.id); l.qtes[b.id] = 1; this.save(); this.toast(`Réservée dans « ${l.nom} »`); return true;
     },
 
     listeDatePassee(l) { return !!(l.date && new Date(l.date + "T23:59:59") < new Date()); },
@@ -559,173 +549,54 @@ export const useCave = defineStore("cave", {
         n += q;
       }
       l.postEvent = l.date;
-      this.save(); this.syncListes();
+      this.save();
       this.toast(n ? `${n} bouteille${n > 1 ? "s" : ""} notée${n > 1 ? "s" : ""} bu${n > 1 ? "es" : "e"} — santé ! (retrouvables dans Bues)` : "Rien à signaler — déjà bues");
     },
-    listeGarde(l) { l.postEvent = l.date; this.save(); this.syncListes(); this.toast("Bouteilles gardées en cave — la liste reste de côté tant que tu veux"); },
+    listeGarde(l) { l.postEvent = l.date; this.save(); this.toast("Bouteilles gardées en cave — la liste reste de côté tant que tu veux"); },
 
-    /* ---------- Synchro Notion : cave (au fil de l'eau + file d'attente) ---------- */
-    queueAdd(payload) {
-      try {
-        const q = JSON.parse(localStorage.getItem(this.pKeys.queue) || "[]");
-        q.push(payload);
-        if (q.length > 100) q.splice(0, q.length - 100);
-        localStorage.setItem(this.pKeys.queue, JSON.stringify(q));
-      } catch {}
-    },
-    queueLen() { try { return JSON.parse(localStorage.getItem(this.pKeys.queue) || "[]").length; } catch { return 0; } },
-    markSync() { try { localStorage.setItem(this.pKeys.db + "-synclast", String(Date.now())); } catch {} },
-    syncLastTxt() { const l = +(localStorage.getItem(this.pKeys.db + "-synclast") || 0); return l ? "il y a " + ilYA(l) : "jamais"; },
-
-    /* Tous les appels Notion passent ici : sérialisés et espacés pour éviter
-       le 429 « Too many requests by a single worker » de Cloudflare,
-       avec une relance après pause si 429 quand même. */
-    sendNotion(payload) {
-      const url = "/api/sync-notion";
-      const opts = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) };
-      const run = async () => {
-        await new Promise(r => setTimeout(r, 300));
-        try {
-          let res = await fetch(url, opts);
-          if (res.status === 429) { await new Promise(r => setTimeout(r, 2500)); res = await fetch(url, opts); }
-          if (!res.ok) { this.derniereRaison = this.raisonSync(res, null); return false; }
-          await res.json();
-          this.markSync();
-          return true;
-        } catch (e) { this.derniereRaison = this.raisonSync(null, null); return false; }
-      };
-      const p = _notionChain.then(run, run);
-      _notionChain = p;
-      return p;
-    },
-
-
-    /* Traduction des échecs de synchro en phrase humaine (pas de jargon dev) */
-
-    raisonSync(res, j) {
-
-      if (typeof navigator !== "undefined" && !navigator.onLine) return "tu es hors ligne — rien n’a pu partir";
-
-      const s = res ? res.status : 0;
-      const err = ((j && j.error) || "") + " " + ((j && j.code) || "");
-      /* Codes Notion réels (renvoyés par le worker) → phrases humaines exactes */
-      if (/unauthorized|expired_token/i.test(err)) return "Notion refuse l'accès — reconnecte la connexion Ma Cave vers Notion (intégration à réautoriser)";
-      if (/object_not_found/i.test(err)) return "la base Notion n'est plus accessible — vérifie qu'elle est toujours partagée avec l'intégration";
-      if (s === 429 || /rate_limited|rate limit/i.test(err)) return "Notion ralentit les appels (limite de débit) — ça repart tout seul en général dans la minute";
-      if (/conflict/i.test(err)) return "deux appareils ont modifié la même chose en même temps — réessaie";
-      if (/token|config|non configuré/i.test(err)) return "la synchro n'est pas configurée côté serveur (variables Cloudflare)";
-      if (s === 413 || /volumineuse|too large|charge/i.test(err)) return "les données sont trop lourdes pour être envoyées";
-      if (s === 404 || /non déployé|Function/i.test(err)) return "le serveur de synchro n'est pas encore déployé — recharge la dernière version sur Cloudflare";
-      if (s >= 500 || /Notion [0-9]/.test(err)) return "Notion a renvoyé une erreur (" + (err.trim() || s) + ") — copie ce message si ça persiste";
-      if (/validation_error/i.test(err) || s === 400 || /format|invalide/i.test(err)) return "une donnée a un format que Notion refuse (champ trop long ou valeur interdite)";
-      return "problème de connexion au serveur — réessaie plus tard";
-    },
-
-    syncNotion(payload) {
-      /* la photo (base64) reste locale : jamais envoyée à Notion ni à l'API */
-      const strip = o => o && typeof o === "object" ? (({ photo, ...rest }) => rest)(o) : o;
-      const clean = { ...payload, profil: this.PROFIL, bouteille: strip(payload.bouteille), bouteilles: payload.bouteilles && payload.bouteilles.map(strip) };
-      this.sendNotion(clean).then(ok => {
-        if (!ok) { this.queueAdd(clean); this.toast("Hors ligne — l'action partira vers Notion au retour du réseau"); }
-      });
-    },
-
-    async flushQueue() {
-      if (!navigator.onLine) return;
-      let q = [];
-      try { q = JSON.parse(localStorage.getItem(this.pKeys.queue) || "[]"); } catch {}
-      if (!q.length) return;
-      const rest = [];
-      let sent = 0;
-      for (const p of q) { if (await this.sendNotion(p)) sent++; else { rest.push(p); rest.push(...q.slice(q.indexOf(p) + 1)); break; } } /* stop dès le 1er échec : ne brûle pas le quota pour rien */
-      try { localStorage.setItem(this.pKeys.queue, JSON.stringify(rest)); } catch {}
-      if (sent) this.toast(`${sent} action${sent > 1 ? "s" : ""} renvoyée${sent > 1 ? "s" : ""} vers Notion`);
-      else if (rest.length) this.toast(`${rest.length} action${rest.length > 1 ? "s" : ""} toujours en attente : ${this.derniereRaison || "réessaie plus tard"}`);
-    },
-
-    async syncAll() {
-      this.syncBusy(true);
-      const stock = this.db.bouteilles.filter(b => b.quantite > 0).map(b => { const { photo, ...rest } = b; return rest; });
-      try {
-        const res = await fetch("/api/sync-notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "sync", bouteilles: stock, profil: this.PROFIL }) });
-        const j = await res.json();
-        if (j.ok) { this.markSync(); this.toast(`Cave sauvegardée sur Notion — ${j.created || 0} créée(s), ${j.updated || 0} mise(s) à jour${j.failed ? ", " + j.failed + " en échec" : ""}${j.failedDetail ? " (" + j.failedDetail + ")" : ""}`); this.flushQueue(); this.syncBues(); }
-        else { this.derniereRaison = this.raisonSync(res, j); this.toast("Synchro impossible : " + this.derniereRaison); }
-      } catch (e) { this.derniereRaison = this.raisonSync(null, null); this.toast("Synchro impossible : " + this.derniereRaison + " — ta cave reste intacte en local"); }
-      finally { this.syncBusy(false); }
-    },
-
-    async pullAll() {
-      this.syncBusy(true);
-      try {
-        /* Le serveur peut répondre par intermittence (connexion coupée) : 2 tentatives */
-        let res = null, j = null;
-        for (let essai = 0; essai < 2 && !j; essai++) {
-          try {
-            res = await fetch("/api/sync-notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "pull", profil: this.PROFIL }) });
-            j = await res.json();
-          } catch (e) { this.derniereRaison = this.raisonSync(null, null); if (essai === 0) await new Promise(r => setTimeout(r, 3000)); }
-        }
-        if (!j) { this.toast("Récupération impossible : " + (this.derniereRaison || "coupe réseau — réessaie")); return; }
-        if (!j.ok) { this.derniereRaison = this.raisonSync(res, j); this.toast("Récupération impossible : " + this.derniereRaison); return; }
-        const r = this.mergePull(j.bouteilles || []);
-        this.markSync();
-        this.save();
-        this.toast(`Récupéré : ${r.added} ajoutée(s), ${r.updated} mise(s) à jour, ${r.kept} conservée(s)`);
-        this.flushQueue();
-        await this.pullBues();   /* ATTENDRE la fusion distante AVANT de pousser : sinon le push écrase les bues de l'autre appareil */
-        this.syncBues();
-      } catch { this.toast("Récupération impossible : " + (this.derniereRaison || "réessaie plus tard")); }
-      finally { this.syncBusy(false); }
-    },
-
-    async autoPull() {
-      if (!navigator.onLine) return "offline";
-      const last = +(localStorage.getItem(this.pKeys.pull) || 0);
-      if (Date.now() - last < 15 * 60 * 1000) return "fresh";
-      localStorage.setItem(this.pKeys.pull, String(Date.now()));
-      try {
-        let res = null, j = null;
-        for (let essai = 0; essai < 2 && !j; essai++) {
-          try {
-            res = await fetch("/api/sync-notion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "pull", profil: this.PROFIL }) });
-            j = await res.json();
-          } catch (e) { this.derniereRaison = this.raisonSync(null, null); if (essai === 0) await new Promise(r => setTimeout(r, 3000)); }
-        }
-        if (!j) return "fail";
-        if (!j.ok) { this.derniereRaison = this.raisonSync(res, j); return "fail"; }
-        const r = this.mergePull(j.bouteilles || []);
-        this.markSync();
-        if (r.added || r.updated) { this.save(); this.toast(`Cave rafraîchie depuis Notion — ${r.added} ajoutée${r.added > 1 ? "s" : ""}, ${r.updated} modifiée${r.updated > 1 ? "s" : ""}`); }
-        return "ok";
-      } catch (e) { /* hors ligne : la cave locale reste la référence */ this.derniereRaison = this.raisonSync(null, null); return "fail"; }
-    },
-
-    mergePull(list) {
-      let added = 0, updated = 0, kept = 0;
-      for (const nb of list) {
-        if (!nb || !nb.nom) continue;
-        const local = this.db.bouteilles.find(b => importKey(b) === importKey(nb));
-        if (!local) {
-          const b = { id: uid(), nom: nb.nom, type: nb.type || "Vin", categorie: nb.categorie || "Rouge", cepage: nb.cepage || "", region: nb.region || "", pays: nb.pays || "", millesime: nb.millesime ?? null, quantite: nb.quantite ?? 1, prix: nb.prix ?? null, cave: nb.cave || "Principale", cuvee: nb.cuvee || "", appellation: nb.appellation || "", specificite: nb.specificite || "", format: nb.format || "Bouteille (75 cl)", commentaire: nb.commentaire || "", statut: nb.statut || "En cave", bues: 0, note: null, photo: null, apoDebut: null, apoFin: null, apoAuto: null, apoRegle: null, buLe: null, modifLe: nb.lastEdited || new Date().toISOString() };
-          const est = estimeApogee(b);
-          if (est) { b.apoAuto = est; b.apoRegle = est.regle; }
-          this.db.bouteilles.push(b);
-          added++;
-        } else {
-          const notionT = nb.lastEdited || "";
-          const localT = local.modifLe || "";
-          if (notionT && (!localT || notionT > localT)) {
-            ["quantite", "prix", "categorie", "region", "pays", "cepage", "cuvee", "appellation", "format", "commentaire", "statut", "millesime", "specificite"].forEach(f => { if (nb[f] != null && nb[f] !== "") local[f] = nb[f]; });
-            local.modifLe = notionT;
-            updated++;
-          } else kept++;
-        }
+    /* ---------- Listes d'envie ---------- */
+    toggleListe(listeId, b) {
+      const l = this.listes.find(x => x.id === listeId);
+      if (!l || !b) return false;
+      l.ids = l.ids || [];
+      const i = l.ids.indexOf(b.id);
+      if (i > -1) { l.ids.splice(i, 1); delete l.qtes[b.id]; this.save(); this.toast(`Sortie de « ${l.nom} »`); return true; }
+      const autres = this.listesDe(b).filter(x => x.id !== listeId);
+      if (b.quantite === 1 && autres.length) {
+        const autre = autres[0], dest = l;
+        this.askConfirm(`Il ne t'en reste qu'une — elle est déjà dans « ${autre.nom} ». La déplacer vers « ${dest.nom} » ?`, "Déplacer", () => {
+          autre.ids = autre.ids.filter(x => x !== b.id); delete autre.qtes[b.id];
+          dest.ids.push(b.id); dest.qtes[b.id] = 1; this.save(); this.toast(`Déplacée vers « ${dest.nom} »`);
+        });
+        return false;
       }
-      return { added, updated, kept };
+      l.ids.push(b.id); l.qtes[b.id] = 1; this.save(); this.toast(`Réservée dans « ${l.nom} »`); return true;
     },
 
-    /* ---------- Avatar de profil (v2.4) : Notion, le plus récent gagne ---------- */
+    listeDatePassee(l) { return !!(l.date && new Date(l.date + "T23:59:59") < new Date()); },
+    listePostPending(l) {
+      if (!this.listeDatePassee(l) || l.postEvent === l.date) return false;
+      return (l.ids || []).some(id => { const b = this.db.bouteilles.find(x => x.id === id); return b && b.quantite > 0; });
+    },
+    listeResteEnCave(l) {
+      return (l.ids || []).reduce((n, id) => { const b = this.db.bouteilles.find(x => x.id === id); return n + (b && b.quantite > 0 ? Math.min(this.listeQ(l, id), b.quantite) : 0); }, 0);
+    },
+    listeBues(l) {
+      let n = 0;
+      for (const id of [...(l.ids || [])]) {
+        const b = this.db.bouteilles.find(x => x.id === id);
+        if (!b) continue;
+        const q = Math.min(this.listeQ(l, id), b.quantite);
+        for (let i = 0; i < q; i++) this.drink(id, true);
+        n += q;
+      }
+      l.postEvent = l.date;
+      this.save();
+      this.toast(n ? `${n} bouteille${n > 1 ? "s" : ""} notée${n > 1 ? "s" : ""} bu${n > 1 ? "es" : "e"} — santé ! (retrouvables dans Bues)` : "Rien à signaler — déjà bues");
+    },
+    listeGarde(l) { l.postEvent = l.date; this.save(); this.toast("Bouteilles gardées en cave — la liste reste de côté tant que tu veux"); },
+
+    /* ---------- Avatar de profil (v2.4) : D1 docs, le plus récent gagne ---------- */
     setAvatar(data, ts) {
       try {
         const k = "ma-cave-avatar-" + this.PROFIL;
@@ -736,33 +607,10 @@ export const useCave = defineStore("cave", {
     },
     avatarDe(id) { try { return localStorage.getItem("ma-cave-avatar-" + id) || null; } catch { return null; } },
     avatarTs(id) { try { return localStorage.getItem("ma-cave-avatar-" + id + "-ts") || null; } catch { return null; } },
-    async pullAvatar() {
-      try {
-        const res = await fetch("/api/avatar?profil=" + this.PROFIL);
-        const j = await res.json();
-        if (!j.ok || !j.data) return;
-        const local = this.avatarDe(this.PROFIL);
-        const lts = this.avatarTs(this.PROFIL);
-        if (local === j.data) { if (!lts && j.edited) this.setAvatar(j.data, j.edited); return; }
-        if (!local || !lts || !j.edited || j.edited > lts) this.setAvatar(j.data, j.edited);
-      } catch {}
-    },
-    async syncAvatar() {
-      const data = this.avatarDe(this.PROFIL);
-      try {
-        const res = await fetch("/api/avatar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, data }) });
-        const j = await res.json();
-        if (j.ok) { this.setAvatar(data, j.edited || new Date().toISOString()); return true; }
-        this.toast((data ? "Avatar non envoyé" : "Suppression non propagée") + " : " + this.raisonSync(res, j));
-        return false;
-      } catch (e) { this.toast("Avatar non envoyé : " + this.raisonSync(null, null)); return false; }
-    },
-
-    /* ---------- Listes d'envie + Envies d'achat : synchro Notion PARTAGÉE ----------
-       Une seule page Notion centrale : toutes les modifs (captures d'écran comprises)
-       sont visibles de tous les profils et de tous les appareils.
-       Les photos partent en miniatures, dans la limite d'un budget de caractères
-       (les pages méta Notion sont plafonnées à ~180 Ko). */
+    /* ---------- Listes d'envie + Envies d'achat : docs D1 PARTAGÉS ----------
+       Un seul doc D1 central (profil thomas) : toutes les modifs (captures d'écran
+       comprises) sont visibles de tous les profils et de tous les appareils.
+       Les photos partent en miniatures, dans la limite du budget de caractères. */
     listesTsKey() { return "ma-cave-listes-ts"; },
     buesTsKey() { return this.pKeys.db + "-bues-ts"; },
     enviesTsKey() { return "ma-cave-envies-ts"; },
@@ -797,111 +645,6 @@ export const useCave = defineStore("cave", {
       return { data: JSON.stringify(out), coupe };
     },
 
-    /* ---------- Historique des bues : partagé entre appareils (page méta Notion) ----------
-       Push = liste complète (auto-réparant : un échec d'envoi est comblé par le push suivant),
-       pull = fusion par clé (date|nom|millésime), les entrées des deux appareils se complètent. */
-    async pullBues() {
-      try {
-        const res = await fetch("/api/bues?profil=" + this.PROFIL);
-        const j = await res.json();
-        if (!j.ok || !j.data) return;
-        const raw = JSON.parse(j.data);
-        if (!Array.isArray(raw) && !Array.isArray(raw.bues)) return;
-        const remote = Array.isArray(raw) ? raw : raw.bues;
-        const rSuppr = Array.isArray(raw) ? [] : (raw.suppr || []);   /* clés supprimées sur un autre appareil */
-        const ts = localStorage.getItem(this.buesTsKey());
-        if (ts && j.edited && j.edited <= ts) return;
-        const k = x => (x.date || "") + "|" + (x.nom || "") + "|" + (x.millesime ?? "");
-        const loc = new Map((this.db.bues || []).map(x => [k(x), x]));
-        let changed = 0, suppr = 0;
-        for (const s of rSuppr) { if (loc.delete(s)) { changed++; suppr++; } }   /* appliquer les suppressions distantes */
-        for (const r of remote) {
-          const kk = k(r);
-          if (!loc.has(kk) || JSON.stringify(loc.get(kk)) !== JSON.stringify(r)) { loc.set(kk, { ...(loc.get(kk) || {}), ...r }); changed++; }
-        }
-        if (changed) {
-          this.db.bues = [...loc.values()].sort((a, b) => (a.date || "") < (b.date || "") ? -1 : 1);
-          /* Les entrées du serveur (ancien format) n'ont pas d'id : sans id, la fiche
-             « bue » ne s'ouvre pas (bueOuverte cherche par id) et les :key explosent. */
-          this.db.bues.forEach(h => { if (!h.id) h.id = uid(); });
-          this.buesFiche = null;
-          this.save();
-          this.toast((suppr && changed === suppr) ? (suppr > 1 ? suppr + " bouteilles bues supprimées" : "1 bouteille bue supprimée") : changed > 1 ? changed + " bouteilles bues récupérée(s) de l’autre appareil" : "1 bouteille bue récupérée de l’autre appareil");
-        }
-        try { localStorage.setItem(this.buesTsKey(), j.edited || new Date().toISOString()); } catch {}
-      } catch {}
-    },
-    async syncBues() {
-      try {
-        const data = JSON.stringify({ bues: (this.db.bues || []).slice(-1000), suppr: (this.db.buesSuppr || []).slice(-300) });
-        const res = await fetch("/api/bues", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, data }) });
-        const j = await res.json();
-        if (j.ok) { try { localStorage.setItem(this.buesTsKey(), j.edited || new Date().toISOString()); } catch {} return true; }
-        return false;
-      } catch { return false; }
-    },
-
-    async pullListes() {
-      try {
-        const res = await fetch("/api/listes");
-        const j = await res.json();
-        if (!j.ok || !j.data) return;
-        const remote = JSON.parse(j.data);
-        if (!Array.isArray(remote)) return;
-        const lts = localStorage.getItem(this.listesTsKey());
-        if (!lts || !j.edited || j.edited > lts) {
-          this.db.listes = remote.map(l => ({ ...l, ids: l.ids || [], qtes: l.qtes || {}, ext: l.ext || [] }));
-          this.save();
-          localStorage.setItem(this.listesTsKey(), j.edited || new Date().toISOString());
-        }
-      } catch {}
-    },
-    async syncListes() {
-      try {
-        const p = this.listesPourSync();
-        const res = await fetch("/api/listes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: p.data }) });
-        const j = await res.json();
-        if (j.ok) {
-          localStorage.setItem(this.listesTsKey(), j.edited || new Date().toISOString());
-          if (p.coupe) this.toast("Listes envoyées — certaines captures trop lourdes restent locales");
-          return true;
-        }
-        this.toast("Listes non envoyées : " + this.raisonSync(res, j));
-        return false;
-      } catch (e) { this.toast("Listes non envoyées : " + this.raisonSync(null, null)); return false; }
-    },
-
-    async pullEnvies() {
-      try {
-        const res = await fetch("/api/envies");
-        const j = await res.json();
-        if (!j.ok || !j.data) return;
-        const remote = JSON.parse(j.data);
-        if (!Array.isArray(remote)) return;
-        const ts = localStorage.getItem(this.enviesTsKey());
-        if (!ts || !j.edited || j.edited > ts) {
-          this.db.envies = remote.map(e => ({ ...e, items: e.items || [] }));
-          this.save();
-          localStorage.setItem(this.enviesTsKey(), j.edited || new Date().toISOString());
-        }
-      } catch {}
-    },
-    async syncEnvies() {
-      try {
-        const p = this.enviesPourSync();
-        const res = await fetch("/api/envies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: p.data }) });
-        const j = await res.json();
-        if (j.ok) {
-          localStorage.setItem(this.enviesTsKey(), j.edited || new Date().toISOString());
-          if (p.coupe) this.toast("Envies envoyées — certaines photos trop lourdes restent locales");
-          return true;
-        }
-        this.toast("Envies non envoyées : " + this.raisonSync(res, j));
-        return false;
-      } catch (e) { this.toast("Envies non envoyées : " + this.raisonSync(null, null)); return false; }
-    },
-
-
     /* ---------- Import ---------- */
 
     async parseImport(file) { return parseImportFile(file); },
@@ -917,8 +660,7 @@ export const useCave = defineStore("cave", {
     },
 
     /* ==================== BDD Cloudflare D1 (v2.10) ====================
-       Double-run : la synchro Notion historique continue comme avant, et la
-       vraie BDD (D1 + photos KV) reçoit les mêmes données. Tant que le jeton
+       Depuis la v2.22, c'est la SEULE synchro : D1 + photos KV. Tant que le jeton
        n'est pas posé (onglet Profil), cette couche ne fait strictement rien. */
 
     d1Token() { try { return localStorage.getItem("ma-cave-token") || ""; } catch { return ""; } },
@@ -1137,21 +879,6 @@ export const useCave = defineStore("cave", {
         this.d1Write("-d1ph", ph);
       }
     },
-    /* « Récupérer Notion » : recopie la base Notion du profil dans la BDD puis fusionne dans l'app.
-       Retourne { ok, bouteilles, docs, error } — la pastille du ProfilSheet affiche le résultat. */
-    async d1MigrateNotion() {
-      if (!this.d1Token()) return { ok: false, error: "Colle d'abord le jeton puis « Lier cet appareil »." };
-      this.syncBusy(true);
-      try {
-        const res = await this.d1Fetch("/api/migrate-notion?profil=" + this.PROFIL, { method: "POST" });
-        const j = await res.json();
-        if (!j.ok) { console.error("[BDD] migration refusée :", res.status, j.error); return { ok: false, error: j.error || ("HTTP " + res.status) }; }
-        console.log("[BDD] migration Notion :", j.bouteilles, "bouteilles,", j.docs, "documents");
-        await this.d1Pull(true);
-        return { ok: true, bouteilles: j.bouteilles || 0, docs: j.docs || 0 };
-      } catch (e) { console.error("[BDD] migration échouée :", e); return { ok: false, error: "connexion impossible" }; }
-      finally { this.syncBusy(false); }
-    },
 
     /* ---------- Préférences du soir (météo, saison, apogée) ---------- */
     SOIR_DEFAUT: { meteo: true, saison: true, apogee: true, bandeauSoir: true, bandeauApogee: true, voyage: false, lat: null, lon: null, ville: "" },
@@ -1161,32 +888,6 @@ export const useCave = defineStore("cave", {
     },
     setSoirPrefs(p) { try { localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(p)); } catch {} this.soirVersion++; this.d1Plan(); },
     soirPrefsTs() { try { return localStorage.getItem(this.pKeys.db + "-soir-prefs-ts") || null; } catch { return null; } },
-    /* Préférences du soir : sauvegardées dans Notion (page méta « Préférences soir » du profil),
-       pour les retrouver après réinstallation de la PWA ou sur un autre appareil. */
-    async pullSoirPrefs() {
-      try {
-        const res = await fetch("/api/prefs-soir?profil=" + this.PROFIL);
-        const j = await res.json();
-        if (!j.ok || !j.data) return;
-        const lts = this.soirPrefsTs();
-        if (lts && j.edited && j.edited <= lts) return; /* local plus récent → on pousse à la prochaine modif */
-        const p = JSON.parse(j.data);
-        localStorage.setItem(this.pKeys.db + "-soir-prefs", JSON.stringify(p));
-        localStorage.setItem(this.pKeys.db + "-soir-prefs-ts", j.edited || new Date().toISOString());
-        this.soirVersion++;
-      } catch {}
-    },
-    async syncSoirPrefs() {
-      const data = JSON.stringify(this.soirPrefs());
-      try {
-        const res = await fetch("/api/prefs-soir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, data }) });
-        const j = await res.json();
-        if (j.ok) { try { localStorage.setItem(this.pKeys.db + "-soir-prefs-ts", j.edited || new Date().toISOString()); } catch {} return true; }
-        this.toast("Préférences non sauvegardées : " + this.raisonSync(res, j));
-        return false;
-      } catch (e) { this.toast("Préférences non sauvegardées : " + this.raisonSync(null, null)); return false; }
-    },
-
     toggleDark() {
       this.darkOn = !this.darkOn;
       try { localStorage.setItem("ma-cave-dark", this.darkOn ? "1" : "0"); } catch {}
@@ -1268,7 +969,7 @@ export const useCave = defineStore("cave", {
         this.db.envies = this.db.envies || [];
         for (const ne of obj.envies) if (ne && ne.id && !this.db.envies.some(e => e.id === ne.id)) this.db.envies.push({ ...ne, items: ne.items || [] });
       }
-      if (obj.avatar) { try { this.setAvatar(obj.avatar); this.syncAvatar(); } catch {} }
+      if (obj.avatar) { try { this.setAvatar(obj.avatar); } catch {} }
       this.save();
       return { ajoutes, maj };
     },
