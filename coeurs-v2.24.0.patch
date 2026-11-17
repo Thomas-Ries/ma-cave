@@ -1,0 +1,69 @@
+--- a/src/stores/cave.js
++++ b/src/stores/cave.js
+@@ -16,7 +16,7 @@
+ export const useCave = defineStore("cave", {
+   state: () => ({
+     PROFIL: "thomas",
+-    db: { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" } },
++    db: { bouteilles: [], bues: [], buesSuppr: [], coeurs: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" } },
+     denseOn: false,
+     TAB: "cave",
+     cavePage: 1,
+@@ -180,7 +180,7 @@
+     load() {
+       let db = null;
+       try { const raw = localStorage.getItem(this.pKeys.db); db = raw ? JSON.parse(raw) : null; } catch { db = null; }
+-      if (!db || !Array.isArray(db.bouteilles)) db = { bouteilles: [], bues: [], buesSuppr: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" } };
++      if (!db || !Array.isArray(db.bouteilles)) db = { bouteilles: [], bues: [], buesSuppr: [], coeurs: [], listes: [], filters: { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" } };
+       db.filters = db.filters || { q: "", cat: "Toutes", cave: "Toutes", region: "Toutes", tri: "", etage: "Tout", apogee: "" };
+       db.filters.tri = db.filters.tri || "";
+       db.filters.region = db.filters.region || "Toutes";
+@@ -193,6 +193,7 @@
+       db.bues = db.bues || [];
+       db.bues.forEach(h => { if (!h.id) h.id = uid(); });   /* id unique : l'historique affiché est trié par date, l'index ne suffit plus */
+       db.buesSuppr = db.buesSuppr || [];   /* clés des bues supprimées (propagées via Notion) */
++      db.coeurs = db.coeurs || [];         /* clés « nom|millésime » des coups de cœur */
+       /* v32 : appellation extraite de l'ancien commentaire */
+       db.bouteilles.forEach(b => {
+         if (b.appellation) return;
+@@ -405,6 +406,22 @@
+       if (!silent) { this.toast(`${b.nom} — santé ! Note ton verdict dans le carnet`); this.buesFiche = e.id; }
+     },
+ 
++    /* ---------- Coups de cœur ----------
++       Clé nom|millésime (même rapprochement que undoDrink : les bues n'ont ni cépage
++       ni cave). Un cœur sur une bue rend donc le cœur rouge sur les exemplaires restants
++       en cave du même vin, et réciproquement. Sync : doc D1 « coeurs », fusion par union. */
++    cleCoeur(o) { return (o.nom || "").toLowerCase().trim() + "|" + (o.millesime ?? ""); },
++    estCoeur(o) { return (this.db.coeurs || []).includes(this.cleCoeur(o)); },
++    nbCoeurs() { return (this.db.coeurs || []).length; },
++    toggleCoeur(o, txt) {
++      const k = this.cleCoeur(o);
++      this.db.coeurs = this.db.coeurs || [];
++      const i = this.db.coeurs.indexOf(k);
++      if (i >= 0) { this.db.coeurs.splice(i, 1); if (txt !== false) this.toast("Retiré des coups de cœur"); }
++      else { this.db.coeurs.push(k); if (txt !== false) this.toast("Coup de cœur ❤️"); }
++      this.save();
++    },
++
+     /* « Ce soir » → rachat en un tap : +1 sur une référence existante. */
+     plusUn(b) {
+       const cible = this.db.bouteilles.find(x => x.id === b.id);
+@@ -694,6 +711,7 @@
+       return [
+         { k: "bues", data: (this.db.bues || []).slice(-1000) },
+         { k: "buesSuppr", data: (this.db.buesSuppr || []).slice(-300) },
++        { k: "coeurs", data: this.db.coeurs || [] },
+         { k: "listes", data: this.listesPourSync ? this.listesPourSync().data : this.listes, profil: "thomas" },
+         { k: "envies", data: this.db.envies || [], profil: "thomas" },
+         { k: "avatar", data: this.avatarDe(this.PROFIL), profil: this.PROFIL },
+@@ -857,6 +875,9 @@
+           if (!doc || doc.data == null) continue;
+           if (k === "buesSuppr") {
+             this.db.buesSuppr = [...tombes].slice(-300);
++          } else if (k === "coeurs") {
++            /* coups de cœur : union des clés locales + distantes (set, pas d'id) */
++            this.db.coeurs = [...new Set([...(this.db.coeurs || []), ...(doc.data || [])])];
+           } else if (["bues", "listes", "envies"].includes(k)) {
+             const cible = k === "listes" ? this.db.listes : k === "envies" ? (this.db.envies = this.db.envies || []) : this.db.bues;
+             const map = new Map(cible.map(x => [x.id, x]));
