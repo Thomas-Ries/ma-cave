@@ -125,13 +125,15 @@ const apoJ = computed(() => {
   return { pos, verdict, etat: y < d ? "garder" : y <= fin ? "apogee" : "passe" };
 });
 
-/* ===== Rappel actif : UN seul, le plus urgent ===== */
+/* ===== Warning frigo : bandeau au-dessus de la vedette ===== */
+const frigoB = computed(() => cave.db.bouteilles.filter(b => b.quantite > 0 && b.cave === "Frigo"));
+const nbFrigo = computed(() => frigoB.value.length);
+
+/* ===== Rappel actif : UN seul, le plus urgent (frigo déplacé en warning) ===== */
 const showListes = ref(false);
 const rappel = computed(() => {
   const l = cave.listes.find(x => x.date && (x.ids || []).length && joursAvant(x.date) >= 0 && joursAvant(x.date) <= 2);
   if (l) return { t: "Soirée « " + l.nom + " »", s: fmtListeDate(l.date) + " · " + l.ids.length + " bouteille" + (l.ids.length > 1 ? "s" : "") + " de côté", action: "listes" };
-  const frigo = cave.db.bouteilles.filter(b => b.quantite > 0 && b.cave === "Frigo");
-  if (frigo.length) return { t: frigo.length + " bouteille" + (frigo.length > 1 ? "s" : "") + " au frigo", s: "Pense à les sortir avant le repas", action: "frigo" };
   const st = cave.apogeeStats;
   if (st.passe > 0) return { t: st.passe + " apogée" + (st.passe > 1 ? "s" : "") + " passée" + (st.passe > 1 ? "s" : ""), s: "À boire sans attendre", action: "passe" };
   return null;
@@ -140,7 +142,7 @@ function rappelGo() {
   const a = rappel.value?.action;
   if (!a) return;
   if (a === "listes") { showListes.value = true; return; }
-  if (a === "frigo") { cave.db.filters.cave = "Frigo"; } else { cave.db.filters.apogee = "passe"; }
+  cave.db.filters.apogee = "passe";
   cave.cavePage = 1;
   router.push("/cave");
 }
@@ -148,7 +150,20 @@ function rappelGo() {
 /* ===== Tuiles stats → cave pré-filtrée ===== */
 function versCaveApo(v) { cave.db.filters.apogee = v; cave.cavePage = 1; router.push("/cave"); }
 function versCaveFrigo() { cave.db.filters.cave = "Frigo"; cave.cavePage = 1; router.push("/cave"); }
-const nbFrigo = computed(() => cave.db.bouteilles.filter(b => b.quantite > 0 && b.cave === "Frigo").length);
+
+/* ===== Mini-stats : une ligne, tap → /stats ===== */
+const stCave = computed(() => cave.stats);
+const miniStats = computed(() => {
+  const st = stCave.value;
+  const ms = st.stock.filter(b => b.millesime && !isNaN(b.millesime)).map(b => parseInt(b.millesime));
+  const regions = new Set(st.stock.filter(b => b.region).map(b => b.region)).size;
+  return {
+    totalB: st.totalB,
+    regions,
+    mill: ms.length ? { min: Math.min(...ms), max: Math.max(...ms) } : null,
+    valeur: st.valeur > 0 ? Math.round(st.valeur) : null,
+  };
+});
 
 /* ===== Spiritueux du soir ===== */
 const spiritux = computed(() => cave.spiritueuxDuSoir);
@@ -174,8 +189,21 @@ function versEnvies() { router.push("/envies"); }
       </div>
     </div>
 
+    <!-- Warning frigo : bandeau au-dessus de la vedette -->
+    <button v-if="nbFrigo" @click="versCaveFrigo" class="mt-3 w-full flex items-stretch rounded-xl2 overflow-hidden bg-accent-soft border border-accent/40 card-sh">
+      <div class="w-[3px] self-stretch shrink-0 bg-accent"></div>
+      <div class="flex-1 min-w-0 py-2.5 pl-3.5 pr-2 flex items-center gap-2.5 text-left">
+        <Ic name="snow" cls="w-4 h-4 text-accent shrink-0" />
+        <span class="flex-1 min-w-0">
+          <span class="block text-xs font-medium text-accent">{{ nbFrigo }} bouteille{{ nbFrigo > 1 ? 's' : '' }} au frigo</span>
+          <span class="block text-[11px] text-muted mt-0.5 truncate">Pense à les sortir avant le repas</span>
+        </span>
+        <Ic name="chevR" cls="w-4 h-4 text-accent shrink-0" />
+      </div>
+    </button>
+
     <!-- Carte vedette : suggestion du soir ou proposition plaisir -->
-    <div v-if="vedette" class="mt-4 rounded-xl2 border border-riesling bg-white overflow-hidden card-sh">
+    <div v-if="vedette" class="mt-3 rounded-xl2 border border-riesling bg-white overflow-hidden card-sh">
       <div class="flex items-stretch">
         <div class="w-[3px] self-stretch shrink-0 bg-riesling"></div>
         <!-- Colonne visuelle : vraie photo si elle existe, silhouette sinon -->
@@ -221,24 +249,33 @@ function versEnvies() { router.push("/envies"); }
       <p class="text-[11px] text-muted mt-1">Rien d'urgent à boire ce soir — sers ce qui te fait plaisir.</p>
     </div>
 
-    <!-- 3 tuiles stats : un tap → cave filtrée -->
+    <!-- 3 tuiles stats : code couleur (or = prêtes, bordeaux = passées, bleu = frigo), un tap → cave filtrée -->
     <div v-if="stockVins.length" class="mt-3 grid grid-cols-3 gap-2">
-      <button @click="versCaveApo('boire')" class="rounded-xl2 bg-white border border-riesling/50 py-2.5 px-2 flex flex-col items-center gap-0.5 card-sh">
-        <Ic name="glass" cls="w-4 h-4 text-accent" />
-        <span class="font-serif text-lg leading-none">{{ cave.apogeeStats.boire }}</span>
+      <button @click="versCaveApo('boire')" class="rounded-xl2 bg-white border border-gold/60 py-2.5 px-2 flex flex-col items-center gap-0.5 card-sh">
+        <Ic name="glass" cls="w-4 h-4 text-gold" />
+        <span class="font-serif text-lg leading-none text-gold">{{ cave.apogeeStats.boire }}</span>
         <span class="text-[10px] text-muted">à boire</span>
       </button>
-      <button @click="versCaveApo('passe')" class="rounded-xl2 bg-white border border-hairline py-2.5 px-2 flex flex-col items-center gap-0.5 card-sh">
-        <Ic name="bell" cls="w-4 h-4 text-accent/70" />
-        <span class="font-serif text-lg leading-none">{{ cave.apogeeStats.passe }}</span>
+      <button @click="versCaveApo('passe')" class="rounded-xl2 bg-white border border-accent/40 py-2.5 px-2 flex flex-col items-center gap-0.5 card-sh">
+        <Ic name="bell" cls="w-4 h-4 text-accent" />
+        <span class="font-serif text-lg leading-none text-accent">{{ cave.apogeeStats.passe }}</span>
         <span class="text-[10px] text-muted">passées</span>
       </button>
-      <button @click="versCaveFrigo" class="rounded-xl2 bg-white border border-hairline py-2.5 px-2 flex flex-col items-center gap-0.5 card-sh">
-        <Ic name="snow" cls="w-4 h-4 text-muted" />
-        <span class="font-serif text-lg leading-none">{{ nbFrigo }}</span>
+      <button @click="versCaveFrigo" class="rounded-xl2 bg-white border border-ice/40 py-2.5 px-2 flex flex-col items-center gap-0.5 card-sh">
+        <Ic name="snow" cls="w-4 h-4 text-ice" />
+        <span class="font-serif text-lg leading-none text-ice">{{ nbFrigo }}</span>
         <span class="text-[10px] text-muted">au frigo</span>
       </button>
     </div>
+
+    <!-- Mini-stats : une ligne discrète, tap → page Stats -->
+    <button v-if="miniStats.totalB" @click="router.push('/stats')" class="mt-2 w-full flex items-center gap-2.5 px-3.5 py-2 rounded-xl2 bg-white/70 border border-hairline text-left card-sh">
+      <Ic name="chart" cls="w-3.5 h-3.5 text-muted shrink-0" />
+      <span class="flex-1 min-w-0 text-[11px] text-muted truncate">
+        Ta cave · <span class="font-medium text-ink">{{ miniStats.totalB }} bouteilles</span><template v-if="miniStats.regions"> · {{ miniStats.regions }} région{{ miniStats.regions > 1 ? 's' : '' }}</template><template v-if="miniStats.mill"> · millésimes {{ miniStats.mill.min }}–{{ miniStats.mill.max }}</template><template v-if="miniStats.valeur"> · ~{{ miniStats.valeur.toLocaleString('fr-FR') }} €</template>
+      </span>
+      <Ic name="chevR" cls="w-3.5 h-3.5 text-muted shrink-0" />
+    </button>
 
     <!-- Rappel actif : une ligne discrète, le plus urgent seulement -->
     <button v-if="rappel" @click="rappelGo" class="mt-3 w-full flex items-stretch rounded-xl2 overflow-hidden bg-accent-soft border border-accent/30 card-sh">
