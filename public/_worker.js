@@ -300,6 +300,7 @@ async function hkdf(ikm, salt, info, len) {
 
 
 
+
 /* Chiffre la charge puis signe le VAPID — renvoie la Response du service push. */
 async function webpush(env, sub, payload) {
   if (!env.VAPID_JWK) throw new Error("Variable VAPID_JWK absente (Settings > Functions > Environment variables)");
@@ -394,6 +395,7 @@ async function pushCron(env) {
   const subs = await pushLecture(env);
   let envoyees = 0, mortes = 0, erreurs = 0;
   const details = []; /* diagnostics : la CAUSE de chaque échec (statut + réponse du service push) */
+  const journal = []; /* état de chaque appareil : envoyé / ignoré, et pourquoi */
   for (const s of subs) {
     const d = s.digest || {};
     const boire = d.boire || 0, passe = d.passe || 0;
@@ -407,17 +409,21 @@ async function pushCron(env) {
         const res = await webpush(env, s, { titre: "Ma Cave — apogées", corps: corps + (noms ? " — " + noms : ""), tag: "ma-cave-push" });
         if (res.ok || res.status === 201) {
           envoyees++;
+          journal.push((s.profil || "?") + " : envoyé" + (s.cle === cle ? " (rappel > 6 j)" : " (résumé changé)"));
           await env.DB.prepare("UPDATE push_subs SET envoye = ?, cle = ? WHERE endpoint = ?").bind(new Date().toISOString(), cle, s.endpoint).run();
         }
-        else if (res.status === 404 || res.status === 410) { mortes++; await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run(); }
+        else if (res.status === 404 || res.status === 410) { mortes++; journal.push((s.profil || "?") + " : appareil désabonné → retiré"); await env.DB.prepare("DELETE FROM push_subs WHERE endpoint = ?").bind(s.endpoint).run(); }
         else {
           erreurs++;
+          journal.push((s.profil || "?") + " : échec");
           try { details.push("push " + res.status + " : " + (await res.text()).slice(0, 150)); } catch { details.push("push " + res.status); }
         }
-      } catch (e) { erreurs++; details.push("exception : " + String(e.message || e)); }
+      } catch (e) { erreurs++; journal.push((s.profil || "?") + " : exception"); details.push("exception : " + String(e.message || e)); }
     }
+    else if (boire + passe > 0) journal.push((s.profil || "?") + " : ignoré (déjà prévenu, rappel dans " + Math.max(0, Math.ceil(6 - jours)) + " j)");
+    else journal.push((s.profil || "?") + " : rien à signaler (" + (boire + passe) + " apogée(s) active(s))");
   }
-  return json({ ok: true, envoyees, mortes, erreurs, total: await pushNombre(env), details });
+  return json({ ok: true, envoyees, mortes, erreurs, total: await pushNombre(env), details, journal });
 }
 
 /* ---------- Listes d'envie (v2.5) ----------
@@ -593,6 +599,7 @@ const PUB_CSS = `
   dl > div:last-child { border-bottom:0; }
   dt { color:var(--muted); } dd { text-align:right; }
   .apogee { margin-top:16px; padding:14px 16px; background:rgba(217,197,137,.18); border:1px solid rgba(217,197,137,.55); font-size:14px; text-align:center; border-radius:12px; }
+
   .apogee small { display:block; font-family:-apple-system,system-ui,sans-serif; font-size:9.5px; letter-spacing:.26em; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
   .cta { display:block; margin-top:22px; text-align:center; }
   .cta a { display:inline-flex; align-items:center; gap:9px; background:var(--accent); color:#fff; text-decoration:none; padding:12px 24px; font-size:14px; letter-spacing:.04em; box-shadow:0 8px 20px rgba(122,46,62,.3); border-radius:12px; }
@@ -893,6 +900,7 @@ export default {
 
     /* Listes d'envie + Envies d'achat : STOCKAGE PARTAGÉ — toutes les modifications
        vont sur la base principale, visibles par tous les profils (PC, iPad…). */
+
     if (url.pathname === "/api/listes") {
       if (request.method === "GET") return metaGet(env, "thomas", LISTES_TITLE, LISTES_PROP);
       if (request.method === "POST") return metaPost(request, env, LISTES_TITLE, LISTES_PROP, listesValides, "thomas");
@@ -914,7 +922,7 @@ export default {
       /* GET = diagnostic : combien d'appareils la base connaît (test curl) */
       if (request.method === "GET") {
         const subs = await pushLecture(env);
-        return json({ ok: true, n: subs.length, profils: subs.map(s => s.profil), maj: subs.map(s => s.maj) });
+        return json({ ok: true, n: subs.length, profils: subs.map(s => s.profil), maj: subs.map(s => s.maj), dernierEnvoi: subs.map(s => s.envoye || null) });
       }
       if (request.method !== "POST") return json({ ok: false, error: "Méthode non autorisée" }, 405);
       return pushSubPost(request, env).catch(e => json({ ok: false, error: "Push sub : " + String(e.message || e) }, 500));
