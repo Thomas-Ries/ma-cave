@@ -9,6 +9,7 @@ import { useCave } from "../stores/cave.js";
 import { splitNom, regionTxt, fmtListeDate, joursAvant } from "../util.js";
 import ListesSheet from "../components/ListesSheet.vue";
 import { classeSoir, meteoActuelle } from "../lib/soir.js";
+import { CAT_COLORS } from "../config.js";
 import Ic from "../components/Ic.vue";
 
 const cave = useCave();
@@ -153,6 +154,22 @@ function versCaveFrigo() { cave.db.filters.cave = "Frigo"; cave.cavePage = 1; ro
 
 /* ===== Mini-stats : quelques chiffres sur la homepage, tap → /stats ===== */
 const stCave = computed(() => cave.stats);
+const camembert = computed(() => {
+  const st = stCave.value;
+  const tot = st.totalB || 1;
+  const entries = Object.entries(st.parCat || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+  const top = entries.slice(0, 5);
+  const reste = entries.slice(5).reduce((s, [, n]) => s + n, 0);
+  if (reste > 0) top.push(["Autres", reste]);
+  let acc = 0;
+  const parts = top.map(([cat, n]) => {
+    const part = n * 100 / tot;
+    const seg = { cat, n, color: CAT_COLORS[cat] || "#8A7F75", dash: Math.max(part - 0.7, 0.5) + " " + (100 - Math.max(part - 0.7, 0.5)), offset: 100 - acc };
+    acc += part;
+    return seg;
+  });
+  return { parts, totalB: st.totalB };
+});
 const miniStats = computed(() => {
   const st = stCave.value;
   const ms = st.stock.filter(b => b.millesime && !isNaN(b.millesime)).map(b => parseInt(b.millesime));
@@ -270,18 +287,38 @@ function versEnvies() { router.push("/envies"); }
       </button>
     </div>
 
-    <!-- Stats : quelques chiffres directement ici, tap → page Stats complète -->
+    <!-- Stats : camembert par catégorie + chiffres clés, tap → page Stats complète -->
     <button v-if="miniStats.totalB" @click="router.push('/stats')" class="mt-3 w-full rounded-xl2 bg-white border border-hairline px-3.5 py-3 text-left card-sh">
       <div class="flex items-center justify-between gap-2">
         <p class="text-[10px] text-muted uppercase tracking-widest">Ta cave en chiffres</p>
         <span class="flex items-center gap-1 text-[10px] text-accent">Tout voir <Ic name="chevR" cls="w-3 h-3" /></span>
       </div>
-      <div class="flex flex-wrap gap-x-5 gap-y-2 mt-2">
-        <span class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.totalB }}</span><span class="text-[10px] text-muted">bouteilles</span></span>
-        <span v-if="miniStats.regions" class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.regions }}</span><span class="text-[10px] text-muted">régions</span></span>
-        <span v-if="miniStats.mill" class="flex items-baseline gap-1.5"><span class="font-serif text-base leading-none">{{ miniStats.mill.min }}–{{ miniStats.mill.max }}</span><span class="text-[10px] text-muted">millésimes</span></span>
-        <span v-if="miniStats.valeur" class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.valeur.toLocaleString('fr-FR') }} €</span><span class="text-[10px] text-muted">de cave</span></span>
-        <span v-if="miniStats.bues" class="flex items-baseline gap-1.5"><span class="font-serif text-lg leading-none">{{ miniStats.bues }}</span><span class="text-[10px] text-muted">bues<template v-if="miniStats.note"> · {{ miniStats.note }}/5</template></span></span>
+      <div class="flex items-center gap-3.5 mt-2.5">
+        <!-- Camembert par catégorie (anneau, couleurs de la charte) -->
+        <div class="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 42 42" class="w-16 h-16">
+            <g transform="rotate(-90 21 21)">
+              <circle cx="21" cy="21" r="15.9155" fill="none" stroke="#EFE8DE" stroke-width="6.5" />
+              <circle v-for="p in camembert.parts" :key="p.cat" cx="21" cy="21" r="15.9155" fill="none" stroke-width="6.5" :stroke="p.color" :stroke-dasharray="p.dash" :stroke-dashoffset="p.offset" stroke-linecap="butt" />
+            </g>
+            <text x="21" y="20.5" text-anchor="middle" class="font-serif" style="font-size: 9.5px" fill="#2B2724">{{ camembert.totalB }}</text>
+            <text x="21" y="27" text-anchor="middle" style="font-size: 4.6px" fill="#8A7F75">bouteilles</text>
+          </svg>
+        </div>
+        <!-- Légende : catégories dominantes -->
+        <div class="flex-1 min-w-0 flex flex-col gap-1">
+          <span v-for="p in camembert.parts.slice(0, 4)" :key="p.cat" class="flex items-center gap-1.5 text-[11px] min-w-0">
+            <span class="w-2 h-2 rounded-full shrink-0" :style="{ background: p.color }"></span>
+            <span class="flex-1 truncate text-muted">{{ p.cat }}</span>
+            <span class="font-medium">{{ p.n }}</span>
+          </span>
+        </div>
+        <!-- Chiffres clés -->
+        <div class="shrink-0 text-right">
+          <span v-if="miniStats.valeur" class="block font-serif text-base leading-none">{{ miniStats.valeur.toLocaleString('fr-FR') }} €</span>
+          <span v-if="miniStats.mill" class="block text-[10px] text-muted mt-1">{{ miniStats.mill.min }}–{{ miniStats.mill.max }}</span>
+          <span v-if="miniStats.note" class="block text-[10px] text-muted mt-0.5">{{ miniStats.note }}/5 <span class="text-gold">★</span></span>
+        </div>
       </div>
     </button>
 
