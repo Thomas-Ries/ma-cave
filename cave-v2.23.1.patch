@@ -1,0 +1,76 @@
+--- a/src/stores/cave.js
++++ b/src/stores/cave.js
+@@ -725,16 +725,23 @@
+          BDD (et donc les caves des autres appareils) par accident. */
+       const dels = ids.filter(id => !vus.includes(id));
+       let delsSautes = false;
+-      if (dels.length > 5 && !this._d1DelForce && Date.now() > (this._d1DelAsk || 0)) {
+-        this._d1DelAsk = Date.now() + 3600e3;
+-        this.d1Journal("suppressions-proposees", dels.length);
+-        console.warn("[BDD]", dels.length, "suppressions en attente — confirmation demandée");
+-        this.askConfirm(
+-          "Supprimer " + dels.length + " bouteilles de la BDD ?",
+-          "Supprimer",
+-          () => { this._d1DelForce = true; this.d1Journal("suppressions", dels.length); this.d1Push().catch(() => {}); }
+-        );
++      if (dels.length > 5 && !this._d1DelForce) {
++        /* BUG DU 17/11/2026 (vidage silencieux de la BDD) : pendant le cooldown d'une
++           heure d'une demande déjà faite, les suppressions partaient QUAND MÊME en
++           silence. Désormais, au-delà de 5 suppressions SANS confirmation explicite,
++           on ne pousse JAMAIS les « b- », qu'un dialogue soit en attente ou en cooldown. */
+         delsSautes = true;
++        if (Date.now() > (this._d1DelAsk || 0)) {
++          this._d1DelAsk = Date.now() + 3600e3;
++          this.d1Journal("suppressions-proposees", dels.length);
++          this.askConfirm(
++            "Supprimer " + dels.length + " bouteilles de la BDD ?",
++            "Supprimer",
++            () => { this._d1DelForce = true; this.d1Journal("suppressions", dels.length); this.d1Push().catch(() => {}); }
++          );
++        } else {
++          console.warn("[BDD]", dels.length, "suppressions en attente — confirmation déjà demandée, rien n'est envoyé");
++        }
+       }
+       if (!delsSautes) for (const id of dels) actions.push({ t: "b-", id });
+       const empreintes = this.d1Read("-d1doc", {});
+@@ -748,7 +755,11 @@
+       if (!actions.length) return true;
+       this.syncBusy(true);
+       try {
+-        const res = await this.d1Fetch("/api/db/push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ profil: this.PROFIL, actions }) });
++        /* x-del-force : preuve de la confirmation explicite « Supprimer N bouteilles ».
++           Le worker REFUSE tout push de plus de 5 « b- » sans cet en-tête (garde-fou serveur). */
++        const headers = { "Content-Type": "application/json" };
++        if (this._d1DelForce) headers["x-del-force"] = "1";
++        const res = await this.d1Fetch("/api/db/push", { method: "POST", headers, body: JSON.stringify({ profil: this.PROFIL, actions }) });
+         const j = await res.json();
+         if (!j.ok) { console.error("[BDD] push refusé :", res.status, j.error); return false; }
+         this.d1Write("-d1push", Date.now());
+@@ -833,14 +844,24 @@
+           if (ids.has(b.id) && !distants.has(b.id)) { this.db.bouteilles.splice(this.db.bouteilles.indexOf(b), 1); deleted++; }
+         }
+         this.d1Write("-d1ids", [...distants]);
+-        /* Docs : fusion par id (le plus récent gagne), sinon doc entier */
++        /* Docs : fusion par id (le plus récent gagne), sinon doc entier.
++           BUES SUPPRIMÉES : les tombstones buesSuppr sont des CLÉS « date|nom|millesime »,
++           pas des objets avec id → elles doivent être traitées HORS du merge générique.
++           Sans ça, une bue supprimée sur un appareil ressuscite partout : le doc distant
++           ne la contient plus, mais le merge par id la garde dans la liste locale, et le
++           push suivant la renvoie en BDD. (Bug constaté le 17/11/2026.) */
+         const emp = this.d1Read("-d1doc", {});
++        const cleBue = h => (h.date || "") + "|" + (h.nom || "") + "|" + (h.millesime ?? "");
++        const tombes = new Set([...(this.db.buesSuppr || []), ...((((j.docs || {}).buesSuppr) || {}).data || [])]);
+         for (const [k, doc] of Object.entries(j.docs || {})) {
+           if (!doc || doc.data == null) continue;
+-          if (["bues", "buesSuppr", "listes", "envies"].includes(k)) {
+-            const cible = k === "listes" ? this.db.listes : k === "envies" ? (this.db.envies = this.db.envies || []) : k === "bues" ? this.db.bues : this.db.buesSuppr;
++          if (k === "buesSuppr") {
++            this.db.buesSuppr = [...tombes].slice(-300);
++          } else if (["bues", "listes", "envies"].includes(k)) {
++            const cible = k === "listes" ? this.db.listes : k === "envies" ? (this.db.envies = this.db.envies || []) : this.db.bues;
+             const map = new Map(cible.map(x => [x.id, x]));
+             for (const it of (doc.data || [])) if (it && it.id && (!map.has(it.id) || (doc.maj || "") >= (emp[k + "-maj"] || ""))) map.set(it.id, it);
++            if (k === "bues") for (const [id, h] of map) if (tombes.has(cleBue(h))) map.delete(id);
+             cible.splice(0, cible.length, ...map.values());
+           } else if (k === "avatar") {
+             const lts = this.avatarTs(this.PROFIL);
