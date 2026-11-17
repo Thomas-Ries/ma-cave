@@ -586,23 +586,22 @@ async function dbPush(request, env) {
     if (a.t === "b" && a.b && a.b.id) {
       const { photo, ...data } = a.b;
       if (photo) data.ph = 1; /* un marqueur : la photo vit dans le KV */
-      stmts.push({
-        sql: "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
-             "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data, profil = excluded.profil " +
-             "WHERE excluded.maj_le >= bouteilles.maj_le",
-        params: [a.b.id, profil, a.b.modifLe || new Date().toISOString(), JSON.stringify(data)]
-      });
+      /* PIÈGE D1 : batch() n'accepte PAS les objets {sql, params} (Malformed input) → prepare().bind() */
+      stmts.push(db.prepare(
+        "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+        "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data, profil = excluded.profil " +
+        "WHERE excluded.maj_le >= bouteilles.maj_le"
+      ).bind(a.b.id, profil, a.b.modifLe || new Date().toISOString(), JSON.stringify(data)));
     } else if (a.t === "b-" && a.id) {
-      stmts.push({ sql: "DELETE FROM bouteilles WHERE id = ?1 AND profil = ?2", params: [a.id, profil] });
+      stmts.push(db.prepare("DELETE FROM bouteilles WHERE id = ?1 AND profil = ?2").bind(a.id, profil));
       if (env.PHOTOS) photoDels.push("p/" + profil + "/" + a.id);
     } else if (a.t === "d" && a.k) {
       const pr = a.profil || profil;
-      stmts.push({
-        sql: "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
-             "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
-             "WHERE excluded.maj_le >= docs.maj_le",
-        params: [a.k, pr, a.maj || new Date().toISOString(), JSON.stringify(a.data ?? null)]
-      });
+      stmts.push(db.prepare(
+        "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+        "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+        "WHERE excluded.maj_le >= docs.maj_le"
+      ).bind(a.k, pr, a.maj || new Date().toISOString(), JSON.stringify(a.data ?? null)));
     } else if (a.t === "p" && a.k && env.PHOTOS && typeof a.data === "string" && a.data.length < PHOTO_MAX) {
       photos.push([a.k, a.data]);
     } else if (a.t === "p-" && a.k && env.PHOTOS) {
@@ -640,12 +639,15 @@ async function dbMigrateNotion(env, profil) {
   for (const p of pages) {
     const b = fromNotionPage(p);
     if (!b || !b.nom) continue;
-    stmts.push({
-      sql: "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
-           "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
-           "WHERE excluded.maj_le >= bouteilles.maj_le",
-      params: [b.id, profil, b.modifLe || new Date().toISOString(), JSON.stringify(b)]
-    });
+    /* les pages Notion n'ont pas l'uid de l'app : l'ID de PAGE sert de clé stable
+       (un re-import ne crée donc JAMAIS de doublon), et lastEdited devient modifLe */
+    b.id = b.id || p.id;
+    b.modifLe = b.modifLe || b.lastEdited || new Date().toISOString();
+    stmts.push(db.prepare(
+      "INSERT INTO bouteilles (id, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+      "ON CONFLICT(id) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+      "WHERE excluded.maj_le >= bouteilles.maj_le"
+    ).bind(b.id, profil, b.modifLe, JSON.stringify(b)));
   }
   /* Pages méta : avatar, listes, envies, bues, préférences soir -> docs */
   const metas = [
@@ -664,12 +666,11 @@ async function dbMigrateNotion(env, profil) {
     if (!j || !j.ok || !j.data) continue;
     let data = j.data;
     if (k === "bues" && data && !Array.isArray(data) && Array.isArray(data.bues)) data = data.bues;
-    stmts.push({
-      sql: "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
-           "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
-           "WHERE excluded.maj_le >= docs.maj_le",
-      params: [k, k === "listes" || k === "envies" ? "thomas" : profil, j.edited || new Date().toISOString(), JSON.stringify(data)]
-    });
+    stmts.push(db.prepare(
+      "INSERT INTO docs (k, profil, maj_le, data) VALUES (?1, ?2, ?3, ?4) " +
+      "ON CONFLICT(k, profil) DO UPDATE SET maj_le = excluded.maj_le, data = excluded.data " +
+      "WHERE excluded.maj_le >= docs.maj_le"
+    ).bind(k, k === "listes" || k === "envies" ? "thomas" : profil, j.edited || new Date().toISOString(), JSON.stringify(data)));
     docs++;
   }
   /* D1 refuse les gros batchs : on découpe par lots de 50 requêtes */

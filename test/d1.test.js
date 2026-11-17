@@ -10,8 +10,16 @@ function mockDB() {
   const d = new DatabaseSync(":memory:");
   return {
     exec: sql => d.exec(sql),
-    prepare: sql => { const st = d.prepare(sql); return { sql, bind: (...p) => ({ all: () => ({ results: st.all(...p) }), run: () => st.run(...p) }) }; },
-    batch: async stmts => { for (const s of stmts) { if (s && s.sql != null && !s.bind) d.prepare(s.sql).run(...(s.params || [])); else if (s && s.sql != null) d.prepare(s.sql).run(...(s.params || [])); } }
+    /* simulate D1 : prepare(sql) -> statement ; .bind(...) -> runnable ; batch() n'accepte QUE des prepared statements */
+    prepare: sql => {
+      const st = d.prepare(sql);
+      return {
+        bind: (...p) => ({ all: () => ({ results: st.all(...p) }), run: () => st.run(...p), _p: p }),
+        run: () => st.run(),
+        _sql: sql
+      };
+    },
+    batch: async stmts => { for (const s of stmts) { if (typeof s.run === "function") s.run(); else throw new Error("Malformed input: batch attend des prepared statements"); } }
   };
 }
 function mockKV() {
