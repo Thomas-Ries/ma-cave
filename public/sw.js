@@ -65,7 +65,7 @@ async function affiche(it) {
       icon: "/icon.svg",
       data: { url: "/" },
     });
-  } catch {}
+  } catch (err) { previensApp({ type: "push-erreur", err: String(err && err.message || err) }); }
 }
 
 /* Arme (ou rattrape) tous les rappels en attente */
@@ -106,9 +106,13 @@ self.addEventListener("message", e => {
 });
 
 /* ===== PUSH serveur (v2.20) : message du cron Cloudflare, même app fermée ===== */
+async function previensApp(m) {
+  try { const cs = await self.clients.matchAll({ type: "window", includeUncontrolled: true }); for (const c of cs) c.postMessage(m); } catch {}
+}
 self.addEventListener("push", e => {
-  let d = {};
-  try { d = e.data ? e.data.json() : {}; } catch {}
+  let d = {}, dechiffre = true;
+  try { d = e.data ? e.data.json() : {}; } catch { dechiffre = false; }
+  previensApp({ type: "push-recu", dechiffre, titre: d.titre || "", corps: d.corps || "" });
   e.waitUntil(affiche({ titre: d.titre || "Ma Cave", corps: d.corps || "", tag: d.tag || "ma-cave-push" }));
 });
 
