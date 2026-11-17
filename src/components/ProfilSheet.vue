@@ -399,6 +399,7 @@ function confirmDisable() {
             <span v-if="d1Import.vins || d1Import.spirits" class="block text-xs font-medium text-green truncate">{{ d1Import.vins }} vin{{ d1Import.vins > 1 ? 's' : '' }}<template v-if="d1Import.spirits"> et {{ d1Import.spirits }} spiritueux</template> importés depuis la BDD</span>
             <span v-else class="block text-xs font-medium text-muted">BDD liée — aucune bouteille synchronisée pour ce profil pour l'instant</span>
 
+
             <span class="block text-[10px] text-muted">Dernière synchro {{ ilYA(d1SyncTs) }}</span>
           </span>
         </div>
@@ -423,7 +424,7 @@ function confirmDisable() {
       </div>
 
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.21.3</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.21.4</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
