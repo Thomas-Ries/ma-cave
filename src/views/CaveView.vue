@@ -9,6 +9,7 @@ import { uid, CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
 import { photoFromFile, splitNom, cepageCourt, regionTxt } from "../util.js";
 import { speechSupporte, creerDictee, parseDictee } from "../lib/dictee.js";
 import Ic from "../components/Ic.vue";
+import { chargePhotoRegion, regionSlug, REGIONS } from "../lib/regions.js";
 import FiltresSheet from "../components/FiltresSheet.vue";
 import ListesSheet from "../components/ListesSheet.vue";
 import ImportPreview from "../components/ImportPreview.vue";
@@ -263,6 +264,24 @@ const pageCount = computed(() => Math.max(1, Math.ceil(cave.visible.length / PER
 watch(() => cave.visible.length, () => { if (cave.cavePage > pageCount.value) cave.cavePage = pageCount.value; });
 const pageItems = computed(() => cave.visible.slice((cave.cavePage - 1) * PER_PAGE.value, cave.cavePage * PER_PAGE.value));
 
+/* Bandeau photo de région (v2.26, style « B » validé) : chargé paresseusement
+   page par page ; regions.js garde un cache par slug → 1 seul décodage par région. */
+const photosCards = ref({});
+const photosEnCours = new Set();
+function nomRegionCard(b) {
+  const slug = regionSlug(b);
+  if (slug) return REGIONS[slug]?.nom || slug;
+  return (b?.region || b?.pays || "").trim();
+}
+function photoCard(b) { return photosCards.value[b.id] || null; }
+watch(pageItems, async items => {
+  for (const b of items) {
+    if (photosCards.value[b.id] || photosEnCours.has(b.id)) continue;
+    photosEnCours.add(b.id);
+    try { const d = await chargePhotoRegion(b); if (d) photosCards.value[b.id] = d; } catch {}
+  }
+}, { immediate: true });
+
 /* Compteur d'en-tête : reflète TOUJOURS la liste filtrée/visible,
    et rappelle le total quand un filtre/recherche est actif */
 const filtresActifs = computed(() => {
@@ -480,10 +499,20 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
 
       <!-- Mode cartes -->
       <template v-else>
-        <div v-for="b in pageItems" :key="b.id" class="relative bg-white border border-hairline rounded-xl2 p-3 mb-2 flex items-center gap-3 cursor-pointer select-none"
+        <div v-for="b in pageItems" :key="b.id" class="relative bg-white border border-hairline rounded-xl2 mb-2 cursor-pointer select-none overflow-hidden"
              :style="sw.id === b.id && sw.dx < 0 ? 'transform:translateX(' + sw.dx + 'px)' : ''"
              @click="sw.id === b.id && sw.dx < -10 ? null : openFiche(b.id)"
              @pointerdown="swipeStart(b, $event)" @pointermove="swipeMove($event)" @pointerup="swipeEnd(b)" @pointercancel="sw.value = { id: null, x: 0, dx: 0 }">
+
+          <!-- Bandeau photo de région (v2.26) : photo embarquée/locale, sinon fond sombre si la région est connue -->
+          <div v-if="photoCard(b)" class="h-20 bg-cover bg-center relative shrink-0" :style="'background-image:url(' + photoCard(b) + ')'">
+            <span class="absolute left-3 bottom-1.5 text-[9px] uppercase tracking-widest text-white/90" style="text-shadow:0 1px 4px rgba(0,0,0,.55)">{{ nomRegionCard(b) }}</span>
+          </div>
+          <div v-else-if="nomRegionCard(b)" class="h-20 bg-ink relative shrink-0">
+            <span class="absolute left-3 bottom-1.5 text-[9px] uppercase tracking-widest text-white/80">{{ nomRegionCard(b) }}</span>
+          </div>
+
+          <div class="flex items-center gap-3 p-3">
           <!-- Pastille catégorie : rond de couleur, plus lisible et plus compact que la bouteille -->
           <span class="w-9 h-9 rounded-full shrink-0 flex items-center justify-center" :style="'background:' + (cave.CAT_COLORS[b.categorie] || '#8A7F75') + '22'"><span class="w-3.5 h-3.5 rounded-full" :style="'background:' + (cave.CAT_COLORS[b.categorie] || '#8A7F75')"></span></span>
           <div class="flex-1 min-w-0">
@@ -495,6 +524,7 @@ function livreDeCave() { exportLivreCave(cave.db.bouteilles, cave.PROFILS[cave.P
           <div class="flex flex-col items-center gap-1 shrink-0">
             <span v-if="b.quantite > 1" class="text-xs text-muted tabular-nums">×{{ b.quantite }}</span>
             <button @click.stop="cave.plusUn(b)" class="px-2 py-1.5 rounded-full border border-hairline text-[11px] text-accent" :title="'Racheter une ' + b.nom" :class="cave.db.filters.etage === 'Spiritueux' ? 'border-chartreuse/40 text-chartreuse' : ''">+1</button>
+          </div>
           </div>
         </div>
       </template>

@@ -9,6 +9,7 @@ import { splitNom, cepageCourt, photoFromFile, accTxt } from "../util.js";
 import { CEPAGES, SPECIFICITES, SPIRIT_MENTIONS } from "../config.js";
 import Ic from "./Ic.vue";
 import { notePalier } from "../lib/noteEchelle.js";
+import { chargePhotoRegion, regionSlug, REGIONS } from "../lib/regions.js";
 
 const cave = useCave();
 const b = computed(() => cave.bouteilleOuverte);
@@ -56,6 +57,20 @@ watch(b, (nb, ob) => {
   apoD.value = nb.apoDebut ?? "";
   apoF.value = nb.apoFin ?? "";
   if (edit.value) remplitEdit(nb);
+}, { immediate: true });
+
+/* Bandeau photo de région (v2.26) : affiché en tête de fiche en mode lecture,
+   uniquement si la bouteille n'a pas de photo perso (la photo perso reste prioritaire). */
+const photoReg = ref(null);
+const nomReg = computed(() => {
+  const slug = regionSlug(b.value);
+  if (slug) return REGIONS[slug]?.nom || slug;
+  return (b.value?.region || b.value?.pays || "").trim();
+});
+watch(b, async nb => {
+  photoReg.value = null;
+  if (!nb || nb.photo) return;
+  try { photoReg.value = await chargePhotoRegion(nb); } catch {}
 }, { immediate: true });
 
 /* Select cépage édition : liste + Assemblage + Autre… (texte conservé si hors liste) */
@@ -208,6 +223,11 @@ watch(acc, v => cave.overlay("fiche-acc", v));
         <div class="flex items-start justify-end">
           <button @click="startEdit" class="text-muted p-2 -m-2 mr-1" title="Modifier la fiche"><Ic name="pencil" cls="w-5 h-5" /></button>
           <button @click="cave.closeFiche()" class="close-x" title="Fermer"><Ic name="x" cls="w-4 h-4" /></button>
+        </div>
+
+        <!-- Bandeau photo de région (v2.26) : seulement sans photo perso -->
+        <div v-if="photoReg" class="relative h-24 mt-2 rounded-xl2 bg-cover bg-center" :style="'background-image:url(' + photoReg + ')'">
+          <span class="absolute left-3 bottom-1.5 text-[10px] uppercase tracking-widest text-white/90" style="text-shadow:0 1px 4px rgba(0,0,0,.55)">{{ nomReg }}</span>
         </div>
 
         <img v-if="b.photo" :src="b.photo" alt="" class="w-full h-44 object-cover rounded-xl2 mt-2" />
