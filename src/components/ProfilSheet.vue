@@ -3,7 +3,7 @@
    Le code admin de Thomas débloque n'importe quel profil en cas d'oubli. */
 import { ref, computed, watch } from "vue";
 import { useCave } from "../stores/cave.js";
-import { chercheVille, villeDepuis } from "../lib/soir.js";
+import { chercheVille, villeDepuis, villeParIp } from "../lib/soir.js";
 import { inscrireBiometrie, verifierBiometrie, cleDe, supprimerCle, biometrieDispo, biomometriePrete, enPWA } from "../lib/face.js";
 import Ic from "./Ic.vue";
 
@@ -33,7 +33,7 @@ const pin1 = ref("");
 const pin2 = ref("");
 const pinMsg = ref("");
 
-watch(() => props.open, v => { if (v) { pinMode.value = null; pin1.value = ""; pin2.value = ""; pinMsg.value = ""; } });
+watch(() => props.open, v => { if (v) { pinMode.value = null; pin1.value = ""; pin2.value = ""; pinMsg.value = ""; autoReseau(); } });
 
 const aPin = computed(() => cave.hasPin(cave.PROFIL));
 
@@ -140,23 +140,38 @@ function toggleSoir() {
   else majPrefs({ bandeauSoir: false, apogee: false, saison: false, meteo: false });
 }
 async function maPosition() {
-  if (!navigator.geolocation) { cave.toast("Géolocalisation non disponible — saisis ta ville"); return; }
+  if (!navigator.geolocation) { await proposerParReseau("Géolocalisation non disponible"); return; }
   geoEnCours.value = true;
   navigator.geolocation.getCurrentPosition(async pos => {
     const { latitude: lat, longitude: lon } = pos.coords;
     const ville = await villeDepuis(lat, lon);
     geoEnCours.value = false;
-    enAttente.value = { lat, lon, ville: ville || "position détectée" };
-  }, (err) => {
+    enAttente.value = { lat, lon, ville: ville || "position détectée", source: "gps" };
+  }, async (err) => {
     geoEnCours.value = false;
-    /* iOS : un seul refus (ou un refus hérité de Safari) bloque TOUT jusqu'à ce
-       qu'on l'autorise dans les Réglages — on le dit clairement. */
-    if (err && err.code === 1) {
-      cave.toast("Localisation refusée. Sur iPhone : Réglages → Apps → Safari (ou Confidentialité → Service de localisation) → autoriser. Ou saisis ta ville.");
-    } else {
-      cave.toast("Position introuvable — saisis ta ville à la place");
-    }
-  }, { timeout: 10000, enableHighAccuracy: true });
+    /* GPS refusé ou injoignable (iOS PWA est capricieux) → on propose la ville
+       détectée par le réseau, sans aucune permission. */
+    if (err && err.code === 1) cave.toast("Localisation refusée. Sur iPhone : Réglages → Apps → Safari (ou Confidentialité → Service de localisation) → autoriser.");
+    const ok = await proposerParReseau(err && err.code === 1 ? "Ville détectée par le réseau à la place" : "GPS indisponible — ville détectée par le réseau");
+    if (!ok && err && err.code === 1) cave.toast("…ou saisis ta ville ci-dessous.");
+    if (!ok && (!err || err.code !== 1)) cave.toast("Position introuvable — saisis ta ville à la place");
+  }, { timeout: 15000 });
+}
+/* Détection réseau (IP) : propose une ville à valider, sans permission */
+async function proposerParReseau(msg) {
+  const r = await villeParIp();
+  if (!r) return false;
+  enAttente.value = r;
+  cave.toast(msg);
+  return true;
+}
+/* À l'ouverture du Profil : si aucune position et météo activée, on propose
+   automatiquement la ville du réseau (une fois par ouverture de feuille). */
+let autoReseauFait = false;
+async function autoReseau() {
+  if (autoReseauFait || prefs.value.lat != null || prefs.value.meteo === false) return;
+  autoReseauFait = true;
+  await proposerParReseau("Ville détectée par le réseau — valide pour activer la météo");
 }
 async function chercherVille() {
   const nom = (villeSaisie.value || "").trim();
@@ -258,7 +273,7 @@ function confirmDisable() {
         </button>
         <div v-if="prefs.meteo" class="p-4 border-t border-hairline bg-cream">
           <template v-if="enAttente">
-            <p class="text-sm mb-3">Position détectée : <span class="font-medium">{{ enAttente.ville }}</span></p>
+            <p class="text-sm mb-3">Position détectée : <span class="font-medium">{{ enAttente.ville }}</span><span v-if="enAttente.source === 'réseau'" class="block text-[11px] text-muted mt-0.5">Détection réseau (approximative) — tu peux la corriger en saisissant ta ville</span></p>
             <div class="flex gap-2">
               <button @click="validerPosition" class="flex-1 py-2.5 rounded-full bg-accent text-white text-sm">Valider</button>
               <button @click="refuserPosition" class="flex-1 py-2.5 rounded-full border border-hairline text-sm text-muted">Annuler</button>
@@ -368,7 +383,7 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.17.1</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.18.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>
