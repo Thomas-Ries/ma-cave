@@ -105,6 +105,21 @@ self.addEventListener("message", e => {
   if (d.type === "verifie") arme().catch(() => {});
 });
 
+/* ===== PUSH serveur (v2.20) : message du cron Cloudflare, même app fermée ===== */
+self.addEventListener("push", e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch {}
+  e.waitUntil(affiche({ titre: d.titre || "Ma Cave", corps: d.corps || "", tag: d.tag || "ma-cave-push" }));
+});
+
+/* Abonnement expiré/révoqué par le service push : on prévient l'app ouverte,
+   elle repassera par le Profil pour réactiver (silencieux sinon). */
+self.addEventListener("pushsubscriptionchange", () => {
+  self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(cs => {
+    for (const c of cs) c.postMessage({ type: "push-sub-change" });
+  }).catch(() => {});
+});
+
 /* Tap sur une notification : focus l'app ouverte, sinon on l'ouvre */
 self.addEventListener("notificationclick", e => {
   e.notification.close();
