@@ -147,16 +147,7 @@ async function maPosition() {
     const ville = await villeDepuis(lat, lon);
     geoEnCours.value = false;
     enAttente.value = { lat, lon, ville: ville || "position détectée" };
-  }, (err) => {
-    geoEnCours.value = false;
-    /* iOS : un seul refus (ou un refus hérité de Safari) bloque TOUT jusqu'à ce
-       que l'aille l'autoriser dans les Réglages — on le dit clairement. */
-    if (err && err.code === 1) {
-      cave.toast("Localisation refusée. Sur iPhone : Réglages → Apps → Safari (ou Confidentialité → Service de localisation) → autoriser. Ou saisis ta ville.");
-    } else {
-      cave.toast("Position introuvable — saisis ta ville à la place");
-    }
-  }, { timeout: 10000, enableHighAccuracy: true });
+  }, () => { geoEnCours.value = false; cave.toast("Position refusée — saisis ta ville à la place"); }, { timeout: 10000 });
 }
 async function chercherVille() {
   const nom = (villeSaisie.value || "").trim();
@@ -368,7 +359,7 @@ function confirmDisable() {
         <p class="text-[10px] text-muted mt-3 leading-relaxed">Une fois l'appareil lié, tout se synchronise automatiquement avec la BDD — aucune action à faire.</p>
       </div>
 
-      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.16.0</p>
+      <p class="text-center text-[10px] text-muted mt-3">Ma Cave · v2.15.0</p>
       <button @click="emit('close')" class="w-full mt-5 py-2.5 rounded-full bg-accent text-white text-sm">Terminé</button>
     </div>
   </div>

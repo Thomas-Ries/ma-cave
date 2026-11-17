@@ -1,6 +1,6 @@
 /* Ma Cave — générateur des icônes PNG (apple-touch 180, maskable 192/512).
- * Node pur, zéro dépendance : rasterise la même scène vectorielle que icon.svg
- * (voûte en pierre + 3 bouteilles, charte bordeaux/crème/riesling).
+ * Node pur, zéro dépendance : rasterise la même scène vectorielle que icon.svg,
+ * c'est-à-dire l'icône du splash : voûte + 3 bouteilles EN TRAIT crème sur fond bordeaux.
  * Lancé par "npm run build" (prebuild) → public/*.png regénérés à chaque build. */
 "use strict";
 const { deflateSync } = require("zlib");
@@ -8,38 +8,79 @@ const { writeFileSync, mkdirSync } = require("fs");
 const { dirname } = require("path");
 
 const CREAM = [250, 246, 241], BOR1 = [138, 53, 71], BOR2 = [106, 40, 54];
-const DARK = [82, 32, 44], GOLD = [217, 197, 137], LABEL = [122, 46, 62];
-const W = 26, B = 94, R = 34; // murs gauche/droite de la voûte, rayon de l'arc
-
 const lerp = (a, b, t) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t));
 const bg = y => lerp(BOR1, BOR2, Math.max(0, Math.min(1, y / 120)));
 const hyp = Math.hypot;
+const STROKE = 3.75; /* demi-épaisseur du trait (7.5 / 2) */
 
+/* distance point → segment */
 function dseg(px, py, ax, ay, bx, by) {
   const vx = bx - ax, vy = by - ay, L = vx * vx + vy * vy;
   const t = L === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / L));
   return hyp(px - (ax + t * vx), py - (ay + t * vy));
 }
-function sdrr(px, py, cx, cy, hw, hh, r) {
-  const dx = Math.abs(px - cx) - hw + r, dy = Math.abs(py - cy) - hh + r;
-  return Math.min(Math.max(dx, dy), 0) + hyp(Math.max(dx, 0), Math.max(dy, 0)) - r;
+
+/* cubique de Bézier échantillonnée en segments */
+function cubic(p0, c1, c2, p3, out) {
+  const n = 10;
+  let px = p0[0], py = p0[1];
+  for (let i = 1; i <= n; i++) {
+    const t = i / n, u = 1 - t;
+    const x = u * u * u * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * p3[0];
+    const y = u * u * u * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * p3[1];
+    out.push([px, py, x, y]); px = x; py = y;
+  }
 }
 
-const JOINTS = [[44.5, 30.6, 48.1, 35.8], [75.5, 30.6, 71.9, 35.8], [33.6, 43.4, 39.4, 46.4]];
-const BOTTLES = [[45, CREAM], [60, GOLD], [75, CREAM]];
+/* Les 7 sous-chemins de l'icône « cave », en coordonnées 120 (icône 24 × 5) */
+const SEGS = [];
+{
+  const push = (...pts) => { for (let i = 0; i + 1 < pts.length; i += 2) SEGS.push([pts[i], pts[i + 1], pts[i + 2], pts[i + 3]]); };
+  const cap = (x0, y0, w, apex, x1, y1) => cubic([x0, y0], [x0, y0 - 4], [x0 + w / 2 - 3.5, apex], [x0 + w / 2, apex], SEGS) || cubic([x0 + w / 2, apex], [x0 + w / 2 + 3.5, apex], [x1, y1 - 4], [x1, y1], SEGS);
+  /* voûte */
+  push(20, 105, 20, 52.5);
+  cubic([20, 52.5], [20, 30.5], [38, 17.5], [60, 17.5], SEGS);
+  cubic([60, 17.5], [82, 17.5], [100, 30.5], [100, 52.5], SEGS);
+  push(100, 52.5, 100, 105);
+  /* bouteille 1 : corps + goulot */
+  push(34.5, 105, 34.5, 86);
+  cubic([34.5, 86], [34.5, 82], [38, 78.5], [42, 78.5], SEGS);
+  cubic([42, 78.5], [46, 78.5], [49.5, 82], [49.5, 86], SEGS);
+  push(49.5, 86, 49.5, 105);
+  push(39.5, 79, 39.5, 68, 44.5, 68, 44.5, 79);
+  /* bouteille 2 (la grande du milieu) */
+  push(52, 105, 52, 79);
+  cubic([52, 79], [52, 74.5], [56, 71], [60, 71], SEGS);
+  cubic([60, 71], [64, 71], [68, 74.5], [68, 79], SEGS);
+  push(68, 79, 68, 105);
+  push(57.5, 78, 57.5, 63.5, 62.5, 63.5, 62.5, 78);
+  /* bouteille 3 */
+  push(70.5, 105, 70.5, 86);
+  cubic([70.5, 86], [70.5, 82], [74, 78.5], [78, 78.5], SEGS);
+  cubic([78, 78.5], [82, 78.5], [85.5, 82], [85.5, 86], SEGS);
+  push(85.5, 86, 85.5, 105);
+  push(75.5, 79, 75.5, 68, 80.5, 68, 80.5, 79);
+}
+/* boîtes englobantes par groupe pour accélérer */
+const BBOXES = [];
+for (let i = 0; i < SEGS.length; ) {
+  const xs = [], ys = [];
+  for (const s of [SEGS[i], SEGS[i + 1], SEGS[i + 2], SEGS[i + 3]]) {
+    if (!s) break;
+    xs.push(s[0], s[2]); ys.push(s[1], s[3]);
+  }
+  if (xs.length) BBOXES.push({ x0: Math.min(...xs) - 4, x1: Math.max(...xs) + 4, y0: Math.min(...ys) - 4, y1: Math.max(...ys) + 4, i0: i, n: Math.min(4, SEGS.length - i) });
+  i += 4;
+}
 
 function scene(x, y) {
   let c = bg(y);
-  if ((x - 60) ** 2 + (y - 58) ** 2 <= 45 * 45) c = lerp(c, CREAM, 0.05);
-  const inside = (B <= y && y <= 94 && W <= x && x <= B) || (y < B && (x - 60) ** 2 + (y - B) ** 2 <= R * R);
-  if (inside) c = DARK;
-  let d = Math.min(dseg(x, y, W, 94, W, B), dseg(x, y, B, 94, B, B));
-  if (y <= B) d = Math.min(d, Math.abs(hyp(x - 60, y - B) - R));
-  if (d <= 1.7) c = CREAM;
-  for (const [ax, ay, bx, by] of JOINTS) if (dseg(x, y, ax, ay, bx, by) <= 0.75) c = lerp(c, CREAM, 0.85);
-  for (const [cx, col] of BOTTLES) {
-    if (sdrr(x, y, cx, 81, 3.5, 11, 2) <= 0 || (cx - 1.4 <= x && x <= cx + 1.4 && 62 <= y && y <= 72)) c = col;
-    if (sdrr(x, y, cx, 79.2, 2.3, 3.2, 0.8) <= 0) c = LABEL;
+  outer: for (const bb of BBOXES) {
+    if (x < bb.x0 || x > bb.x1 || y < bb.y0 || y > bb.y1) continue;
+    for (let k = 0; k < bb.n; k++) {
+      const s = SEGS[bb.i0 + k];
+      if (dseg(x, y, s[0], s[1], s[2], s[3]) <= STROKE) { c = CREAM; break outer; }
+    }
   }
   return c;
 }
@@ -62,7 +103,7 @@ function render(size, scale, path) {
   const S = size / 120, raw = Buffer.alloc((size * 3 + 1) * size);
   let o = 0;
   for (let py = 0; py < size; py++) {
-    raw[o++] = 0; // octet de filtre de la ligne
+    raw[o++] = 0; // octet de filtre de la ligne (précède CHAQUE ligne de pixels)
     for (let px = 0; px < size; px++) {
       let r = 0, g = 0, b = 0;
       for (const fx of [0.25, 0.75]) for (const fy of [0.25, 0.75]) {
@@ -84,7 +125,7 @@ function render(size, scale, path) {
   console.log("  " + path + " " + size + "x" + size + " (" + (png.length / 1024).toFixed(1) + " Ko)");
 }
 
-console.log("Icônes PWA :");
+console.log("Icônes PWA (trait « splash ») :");
 render(180, 1.0, "public/apple-touch-icon.png");
 render(192, 0.74, "public/icon-192.png");
 render(512, 0.74, "public/icon-512.png");

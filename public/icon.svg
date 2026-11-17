@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Ma Cave">
-  <!-- Nouveau logo : voûte de cave en pierre avec trois bouteilles -->
+  <!-- Même dessin que le splash : voûte + 3 bouteilles en trait crème, fond bordeaux -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#8A3547"/>
@@ -7,15 +7,13 @@
     </linearGradient>
   </defs>
   <rect width="120" height="120" rx="27" fill="url(#bg)"/>
-  <circle cx="60" cy="58" r="45" fill="#FAF6F1" opacity="0.05"/>
-  <path d="M26 94V57c0-18.8 15.2-31 34-31s34 12.2 34 31v37Z" fill="#52202C"/>
-  <path d="M26 94V57c0-18.8 15.2-31 34-31s34 12.2 34 31v37" fill="none" stroke="#FAF6F1" stroke-width="3.4" stroke-linecap="round"/>
-  <g stroke="#FAF6F1" stroke-width="1.5" opacity="0.65" stroke-linecap="round">
-    <path d="M44.5 30.6l3.6 5.2"/><path d="M75.5 30.6l-3.6 5.2"/><path d="M33.6 43.4l5.8 3"/>
-  </g>
-  <g>
-    <rect x="41.5" y="70" width="7" height="22" rx="2" fill="#FAF6F1"/><rect x="44.1" y="62" width="2.8" height="9" rx="1.2" fill="#FAF6F1"/><rect x="43" y="76" width="4.6" height="6.5" rx="1" fill="#7A2E3E"/>
-    <rect x="56.5" y="70" width="7" height="22" rx="2" fill="#D9C589"/><rect x="59.1" y="62" width="2.8" height="9" rx="1.2" fill="#D9C589"/><rect x="58" y="76" width="4.6" height="6.5" rx="1" fill="#7A2E3E"/>
-    <rect x="71.5" y="70" width="7" height="22" rx="2" fill="#FAF6F1"/><rect x="74.1" y="62" width="2.8" height="9" rx="1.2" fill="#FAF6F1"/><rect x="73" y="76" width="4.6" height="6.5" rx="1" fill="#7A2E3E"/>
+  <g fill="none" stroke="#FAF6F1" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 105V52.5C20 30.5 38 17.5 60 17.5s40 13 40 35V105"/>
+    <path d="M34.5 105v-19c0-4 3.5-7.5 7.5-7.5s7.5 3.5 7.5 7.5V105"/>
+    <path d="M39.5 79V68h5v11"/>
+    <path d="M52 105v-26c0-4.5 3.5-8 8-8s8 3.5 8 8v26"/>
+    <path d="M57.5 78V63.5h5V78"/>
+    <path d="M70.5 105v-19c0-4 3.5-7.5 7.5-7.5s7.5 3.5 7.5 7.5V105"/>
+    <path d="M75.5 79V68h5v11"/>
   </g>
 </svg>
