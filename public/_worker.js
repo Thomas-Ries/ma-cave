@@ -314,7 +314,11 @@ async function webpush(env, sub, payload) {
   const asRaw = new Uint8Array(await crypto.subtle.exportKey("raw", asPair.publicKey));
   const ecdh = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, asPair.privateKey, 256));
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const ikm = await hkdf(ecdh, salt, concatBytes(te.encode("WebPush: info"), uaBytes, asRaw), 32);
+  /* RFC 8291 §2 : le premier HKDF prend le AUTH_SECRET de l'appareil comme sel
+     (pas le salt aléatoire), et key_info = "WebPush: info" || 0x00 || ua_public || as_public.
+     L'oubli du 0x00 et du auth_secret rendait les messages indéchiffrables côté appareil. */
+  const authBytes = b64urlBytes(sub.auth);
+  const ikm = await hkdf(ecdh, authBytes, concatBytes(te.encode("WebPush: info"), new Uint8Array([0]), uaBytes, asRaw), 32);
   const cek = await hkdf(ikm, salt, te.encode("Content-Encoding: aes128gcm\0"), 16);
   const nonce = await hkdf(ikm, salt, te.encode("Content-Encoding: nonce\0"), 12);
   const chiffre = new Uint8Array(await crypto.subtle.encrypt(
